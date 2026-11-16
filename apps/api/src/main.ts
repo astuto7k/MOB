@@ -16,3 +16,4 @@ export async function createApp(){
  app.useGlobalFilters(new ErrorFilter());app.enableShutdownHooks();await app.init();app.get(SignalingService).attach(app.getHttpServer());return app;
 }
 if(require.main===module){void createApp().then(app=>app.listen(config.PORT,'0.0.0.0')).catch(error=>{console.error('API startup failed:',error instanceof Error?error.message:'Unknown error');process.exitCode=1;});}
+export default function handler(_req:unknown,res:{statusCode?:number;setHeader?:(k:string,v:string)=>void;end?:(b:string)=>void}){if(res.setHeader)res.setHeader('Content-Type','application/json');res.statusCode=200;if(res.end)res.end(JSON.stringify({status:'ok'}));}
