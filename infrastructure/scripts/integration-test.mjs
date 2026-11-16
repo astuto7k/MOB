@@ -93,7 +93,15 @@ try {
   }
   prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, max: 1 }) });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-  const owner = await prisma.user.create({ data: { email: ownerEmail, passwordHash } });
+  const bootstrapEnv = { ...env, BOOTSTRAP_OWNER_EMAIL: ownerEmail, BOOTSTRAP_OWNER_HASH: passwordHash };
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['apps/api/dist/cloud-bootstrap.js'], { cwd: root, env: bootstrapEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    let message = ''; child.stderr.on('data', data => { message += data; });
+    child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(`Bootstrap de teste falhou: ${message}`)));
+  });
+  const owner = await prisma.user.findUniqueOrThrow({ where: { email: ownerEmail } });
+  assert.equal(owner.passwordHash, passwordHash);
+  ok('bootstrap cloud cria o primeiro proprietário usando trava e hash Argon2id');
   const other = await prisma.user.create({ data: { email: otherEmail, passwordHash } });
   api = spawn(process.execPath, ['apps/api/dist/main.js'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
   api.stdout.on('data', data => { log = (log + data).slice(-16000); });
