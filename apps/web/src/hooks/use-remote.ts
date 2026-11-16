@@ -168,7 +168,7 @@ export function useRemote(session: RemoteSession | undefined, refresh: () => voi
         pollTimer = setInterval(async () => {
           if (canceled) return;
           try {
-            const data = await api<{ messages: Array<{ seq: number; type: string; payload?: any }>; peerPresent?: boolean; session?: RemoteSession }>(`/sessions/${session.id}/signal?after=${lastSeq}`);
+            const data = await api<{ messages: Array<{ seq: number; type: string; payload?: RTCSessionDescriptionInit & RTCIceCandidateInit }>; peerPresent?: boolean; session?: RemoteSession }>(`/sessions/${session.id}/signal?after=${lastSeq}`);
             verifiedRef.current = Date.now();
             if (data.peerPresent && !offered) {
               offered = true;

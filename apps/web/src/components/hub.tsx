@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Activity, ArrowRight, Bell, ChevronDown, CircleHelp, Command, Eye, EyeOff, Files, History, LayoutDashboard, Loader2, LockKeyhole, LogOut, Menu, MonitorSmartphone, Moon, Settings2, ShieldCheck, Smartphone, Sun, X } from "lucide-react";
+import { Activity, ArrowRight, Bell, Command, Eye, EyeOff, Files, History, LayoutDashboard, Loader2, LockKeyhole, LogOut, Menu, MonitorSmartphone, Moon, Settings2, ShieldCheck, Smartphone, Sun, X } from "lucide-react";
 import { api, ApiError, post, setCsrfToken } from "@/lib/api";
 import type { AuditEvent, Device, RemoteSession, User } from "@/lib/types";
 import { useResource } from "@/hooks/use-resource";

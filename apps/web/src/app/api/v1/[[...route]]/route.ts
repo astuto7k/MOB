@@ -96,7 +96,6 @@ const OWNER_USER = { id: "00000000-0000-4000-8000-000000000001", email: "astuto7
 const SECRET = process.env.MASTER_KEY || "mob-remote-hub-astuto7k-secret-key-2026";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __MOB_STATE__: HubState | undefined;
 }
 
