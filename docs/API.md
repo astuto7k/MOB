@@ -16,7 +16,7 @@ Na evolução0.2, respostas de sessão REST/WS e pedidos do aparelho incluem `op
 
 ## Respostas e erros
 
-Listas são arrays JSON diretos, sem envelope ou paginação nesta versão; dispositivos no máximo cinco ativos, sessões até 100 mais recentes, auditoria até 200 e transferências até 100. POST bem-sucedido retorna **201** por padrão do NestJS, inclusive logout, aprovação e encerramento. GET/PATCH/DELETE retornam **200**. Não presumir 200 em todos os POSTs; clientes aceitam qualquer 2xx.
+Listas são arrays JSON diretos, sem envelope ou paginação nesta versão; dispositivos no máximo 100 ativos, sessões até 100 mais recentes, auditoria até 200 e transferências até 100. POST bem-sucedido retorna **201** por padrão do NestJS, inclusive logout, aprovação e encerramento. GET/PATCH/DELETE retornam **200**. Não presumir 200 em todos os POSTs; clientes aceitam qualquer 2xx.
 
 Erros usam `{ "code": "CODIGO", "message": "Mensagem" }`; erros de validação podem incluir `fields: [{path,message}]`. Campos extras são rejeitados. Exemplos: `INVALID_INPUT`/400, `INVALID_JSON`/400, `PAYLOAD_TOO_LARGE`/413, `INVALID_CREDENTIALS`/401, `MFA_REQUIRED`/401, `UNAUTHORIZED`/401, `CSRF_REJECTED`/403, `NOT_FOUND`/404, `DEVICE_LIMIT`/409, `SESSION_EXISTS`/409, `INVALID_SESSION_STATE`/409, `RATE_LIMITED`/429. Recursos de outro proprietário retornam 404. Corpo HTTP limitado a 192 KiB; arquivos não passam por HTTP.
 
@@ -85,3 +85,6 @@ Fluxo normal: `REQUESTED` (estado de modelo) → `WAITING_DEVICE` ou `WAITING_AP
 Recusa pendente → REJECTED. Prazo de aprovação/duração → EXPIRED. Estados terminais (`ENDED`, `REJECTED`, `EXPIRED`, `FAILED`) nunca retornam a estados autorizados. Revogação, logout, perda de WebSocket e reinício de servidor encerram sessões. Cada nova sessão exige novo consentimento. A API revisa expiração a cada segundo e autenticação dos sockets a cada cinco segundos; o Android mantém prazo local monotônico de dez segundos. Em partição de rede a revogação depende desse prazo, não de entrega instantânea de eventos.
 
 Consulte [PROTOCOL.md](PROTOCOL.md) para sinalização e DataChannels.
+
+
+Sinalização HTTPS: POST `/sessions/:id/signal` recebe o mesmo contrato join/offer/answer/ice do WebSocket; GET aceita `?after=SEQ` e retorna `{messages,peerPresent,session}`. Ambas as rotas exigem autenticação, sessão aprovada e vínculo ao operador/aparelho correto; POST administrativo também exige CSRF. O armazenamento é PostgreSQL e compartilhado entre instâncias. Ver [VERCEL.md](VERCEL.md).

@@ -8,10 +8,10 @@ android {
     compileSdk = 37
     defaultConfig {
         applicationId = "com.androidremotehub"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = 4
-        versionName = "0.4.0"
+        minSdk = 30
+        targetSdk = 37
+        versionCode = 5
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")

@@ -2,15 +2,22 @@ package com.androidremotehub
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -34,9 +40,9 @@ import com.androidremotehub.session.SharingService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     private var pendingSession: String? = null
@@ -69,51 +75,27 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 var previous = emptySet<String>()
-                var consecutiveFailures = 0
                 while (true) {
-                    var identity = HubRepository.state.value.identity
-                    if (identity == null) {
-                        runCatching {
-                            HubApi.autoDiscoverAndPair(HubRepository.vault.publicIdentity())
-                        }.onSuccess { paired ->
-                            identity = paired
-                            HubRepository.paired(paired)
-                            com.androidremotehub.notifications.NotificationIntegration.initialize(this@MainActivity)
-                        }
-                    }
+                    val identity = HubRepository.state.value.identity
                     if (identity != null) {
                         try {
-                            val api = HubApi(identity!!)
+                            val api = HubApi(identity)
                             api.json("/device/heartbeat", DeviceTelemetry.heartbeat(this@MainActivity))
                             val requests = api.requests()
-                            if (requests.any { it.id !in previous }) HubNotifications.request(this@MainActivity, identity!!.name)
+                            if (requests.any { it.id !in previous }) HubNotifications.request(this@MainActivity, identity.name)
                             previous = requests.map { it.id }.toSet()
-                            consecutiveFailures = 0
-                            HubRepository.update { it.copy(requests = requests, connection = if (it.active == null) "Conectado • visível no painel (${identity!!.serverUrl})" else it.connection, error = null) }
+                            HubRepository.update { it.copy(requests = requests, connection = if (it.active == null) "Conectado • aguardando autorização local" else it.connection, error = null) }
                         } catch (e: ApiException) {
-                            consecutiveFailures++
-                            if (e.status == 401 || e.status == 403 || consecutiveFailures >= 2) {
-                                runCatching {
-                                    HubApi.autoDiscoverAndPair(HubRepository.vault.publicIdentity(), identity?.serverUrl)
-                                }.onSuccess { rePaired ->
-                                    HubRepository.paired(rePaired)
-                                    consecutiveFailures = 0
-                                }
-                            }
+                            if ((e.status == 401 || e.status == 403) && HubRepository.state.value.identity?.token == identity.token) {
+                                SharingService.current?.stopNow("Credencial revogada ou expirada")
+                                HubRepository.forget()
+                                HubRepository.error("A credencial expirou ou foi revogada. Faça um novo pareamento.")
+                            } else HubRepository.error("Servidor indisponível (${e.status}). Tente novamente.")
                         } catch (_: Exception) {
-                            consecutiveFailures++
-                            if (consecutiveFailures >= 2) {
-                                runCatching {
-                                    HubApi.autoDiscoverAndPair(HubRepository.vault.publicIdentity())
-                                }.onSuccess { rePaired ->
-                                    HubRepository.paired(rePaired)
-                                    consecutiveFailures = 0
-                                }
-                            }
-                            HubRepository.update { it.copy(connection = "Reconectando automaticamente ao painel…") }
+                            HubRepository.update { it.copy(connection = "Sem conexão com o servidor", error = "Verifique a internet e o endereço do servidor.") }
                         }
                     }
-                    delay(2500)
+                    delay(4000)
                 }
             }
         }
@@ -142,10 +124,9 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.padding(24.dp, 24.dp, 24.dp, 18.dp)) {
                 Text("ANDROID / REMOTE HUB", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(12.dp))
-                Text(if (state.identity == null) "${Build.MANUFACTURER} ${Build.MODEL}" else state.identity!!.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(if (state.identity == null) "Seus dispositivos.\nSob seu controle." else "${state.identity!!.name}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text(if (state.identity == null) "Conectando automaticamente ao painel…" else state.connection, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = { diagnostics = true }) { Text("Privacidade e diagnóstico") }
+                Text(if (state.identity == null) "Assistência privada com consentimento em cada sessão." else state.connection, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             state.error?.let { error ->
                 Card(Modifier.padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF422938))) {
@@ -153,6 +134,7 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = { HubRepository.error(null) }, modifier = Modifier.padding(start = 8.dp)) { Text("Fechar alerta") }
                 }
             }
+            TextButton(onClick = { diagnostics = true }) { Text("Privacidade e diagnóstico") }
             if (state.identity == null) PairingScreen()
             else {
                 PrimaryTabRow(selectedTabIndex = tab) {
@@ -170,60 +152,67 @@ class MainActivity : ComponentActivity() {
     }
     @Composable private fun PairingScreen() {
         val scope = rememberCoroutineScope()
-        var server by rememberSaveable { mutableStateOf("http://192.168.0.9:3000") }
-        var name by rememberSaveable { mutableStateOf("${Build.MANUFACTURER} ${Build.MODEL}".trim()) }
+        var server by rememberSaveable { mutableStateOf("") }
+        var code by rememberSaveable { mutableStateOf("") }
+        var name by rememberSaveable { mutableStateOf(Build.MODEL) }
+        var checkedServer by remember { mutableStateOf<String?>(null) }
+        var checkedOrigin by remember { mutableStateOf<String?>(null) }
         var busy by remember { mutableStateOf(false) }
+        var privacy by rememberSaveable { mutableStateOf(false) }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.5.dp)
-                    Column {
-                        Text("Conexão Automática Ativa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Buscando o painel automaticamente (Rede Local e Vercel)… Assim que encontrar, este aparelho aparece no painel na hora.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
+            InfoCard("Você decide quando compartilhar", "Cada transmissão exige a confirmação nativa do Android. A notificação permite encerrar imediatamente. Não pedimos acesso a SMS, leitura de notificações, câmera, microfone ou armazenamento irrestrito. Feche conteúdo privado antes de compartilhar: o que estiver visível poderá aparecer na transmissão.")
+            Row {
+                Checkbox(checked = privacy, onCheckedChange = { privacy = it })
+                Text("Li as informações de privacidade e sou o proprietário deste aparelho.", Modifier.padding(top = 12.dp))
             }
-            InfoCard("Ou informe a URL do seu painel (Vercel / IP)", "Se você subiu o painel na Vercel (ex.: https://seu-projeto.vercel.app), digite ou cole o link abaixo e toque em Conectar Agora. Não precisa de código!")
-            OutlinedTextField(server, { server = it }, label = { Text("URL do Painel (Vercel ou IP Local)") }, placeholder = { Text("https://seu-painel.vercel.app") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(name, { name = it.take(80) }, label = { Text("Nome deste Android") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Button(enabled = server.isNotBlank() && name.isNotBlank() && !busy, onClick = {
+            OutlinedTextField(server, { server = it; checkedServer = null; checkedOrigin = null }, label = { Text("Servidor HTTPS") }, placeholder = { Text("https://painel.exemplo.com") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(enabled = !busy && privacy && server.isNotBlank(), onClick = {
                 busy = true
                 scope.launch {
-                    runCatching { HubApi.autoPair(server, name, HubRepository.vault.publicIdentity()) }
-                        .onSuccess { identity -> HubRepository.paired(identity); com.androidremotehub.notifications.NotificationIntegration.initialize(this@MainActivity) }
-                        .onFailure { HubRepository.error(it.message ?: "Não foi possível conectar a este endereço") }
+                    runCatching { HubApi.inspectServer(server) }.onSuccess { checkedServer = it; checkedOrigin = HubApi.validateServer(server) }
+                        .onFailure { HubRepository.error(it.message ?: "Não foi possível verificar o servidor") }
                     busy = false
                 }
-            }, modifier = Modifier.fillMaxWidth()) {
-                if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Text("Conectar Agora (Sem Código)")
-            }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Verificar identidade do servidor") }
+            checkedServer?.let { InfoCard("Confirme seu servidor", "$checkedOrigin\n$it\nCompare a origem com o painel do proprietário antes de parear.") }
+            OutlinedTextField(code, { code = it.take(32) }, label = { Text("Código do painel") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it.take(80) }, label = { Text("Nome deste Android") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(enabled = privacy && checkedServer != null && code.isNotBlank() && name.isNotBlank() && !busy, onClick = {
+                busy = true
+                scope.launch {
+                    runCatching { HubApi.pair(checkedOrigin!!, code, name, HubRepository.vault.publicIdentity()) }
+                        .onSuccess { identity -> HubRepository.paired(identity); com.androidremotehub.notifications.NotificationIntegration.initialize(this@MainActivity) }
+                        .onFailure { HubRepository.error(it.message ?: "Pareamento recusado") }
+                    busy = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Confirmar servidor e parear") }
+            Text("O código expira e funciona uma única vez. O painel deve estar autenticado para criá-lo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     @Composable private fun SessionScreen(state: HubUiState) {
         val active = state.active
         if (active == null) {
-            InfoCard("Aparelho Visível no Painel!", "Este Android (${state.identity?.name}) já está conectado e visível no seu painel. Para transmitir a tela, clique em 'Solicitar assistência' no painel web.")
-            if (state.requests.isEmpty()) InfoCard("Pronto para receber solicitações", "Nenhuma solicitação pendente no momento.")
+            InfoCard("Disponível com o app aberto", "Mantenha esta tela aberta para receber pedidos. Com Firebase configurado, pedidos também podem chegar por notificação. Nenhuma transmissão começa automaticamente.")
+            if (state.requests.isEmpty()) InfoCard("Nenhum pedido pendente", "O proprietário pode solicitar assistência no painel web.")
             state.requests.forEach { request ->
-                var allowControl by remember(request.id) { mutableStateOf(request.requestedControl && state.accessibilityEnabled) }
+                var allowControl by remember(request.id) { mutableStateOf(false) }
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Pedido de assistência recebido", style = MaterialTheme.typography.titleLarge)
-                        Text("Modalidade: ${if (request.requestedControl) "visualização e controle opcional" else "somente visualização"}\nExpira: ${prettyDate(request.expiresAt)}")
+                        Text("Pedido de assistência", style = MaterialTheme.typography.titleLarge)
+                        Text("Operador: ${request.operator}\nSolicitado: ${if (request.requestedControl) "visualização e controle opcional" else "somente visualização"}\nExpira: ${prettyDate(request.expiresAt)}")
                         if (request.requestedControl) {
                             Row {
                                 Checkbox(checked = allowControl, enabled = state.accessibilityEnabled, onCheckedChange = { allowControl = it })
-                                Text("Autorizo controle nesta sessão.", Modifier.padding(top = 12.dp))
+                                Text("Autorizo controle nesta sessão. Apenas app, Calculadora e Relógio.", Modifier.padding(top = 12.dp))
                             }
-                            if (!state.accessibilityEnabled) Text("Você pode compartilhar a tela normalmente agora (somente visualização).")
+                            if (!state.accessibilityEnabled) Text("Para controle, habilite manualmente o serviço em Ajustes. Você pode compartilhar só a tela.")
                         }
-                        Button(onClick = { requestSharing(request, allowControl) }, modifier = Modifier.fillMaxWidth()) { Text("Iniciar transmissão da tela") }
+                        Button(onClick = { requestSharing(request, allowControl) }, modifier = Modifier.fillMaxWidth()) { Text("Continuar para consentimento Android") }
                         OutlinedButton(onClick = {
                             lifecycleScope.launch {
                                 runCatching { HubApi(state.identity!!).json("/sessions/${request.id}/reject", JSONObject()) }
                                     .onSuccess { HubRepository.record(request.id, "Pedido recusado localmente"); HubRepository.update { it.copy(requests = it.requests.filterNot { r -> r.id == request.id }) } }
-                                    .onFailure { HubRepository.error("Não foi possível recusar.") }
+                                    .onFailure { HubRepository.error("Não foi possível recusar. A sessão continua sem autorização.") }
                             }
                         }, modifier = Modifier.fillMaxWidth()) { Text("Recusar solicitação") }
                     }
@@ -234,18 +223,18 @@ class MainActivity : ComponentActivity() {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Sua tela está compartilhada", style = MaterialTheme.typography.titleLarge)
                     Text("Estado: ${active.status}\n${if (state.controlEnabled) "Controle autorizado nesta sessão" else "Somente visualização"}\nTermina até: ${prettyDate(active.expiresAt)}")
+                    Text("Telas protegidas permanecem bloqueadas. Bloquear o aparelho encerra a sessão.")
                     Button(onClick = { SharingService.current?.stopNow("Encerrada localmente pelo proprietário") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF7186), contentColor = Color(0xFF160A0F)), modifier = Modifier.fillMaxWidth()) { Text("Encerrar compartilhamento agora") }
                     if (state.controlEnabled) OutlinedButton(onClick = { SharingService.current?.suspendControl() }, modifier = Modifier.fillMaxWidth()) { Text("Suspender controle imediatamente") }
                     else if (active.requestedControl && state.accessibilityEnabled) {
+                        Text("O operador solicita controle. Ao autorizar, ele poderá tocar, deslizar e inserir texto no app, Calculadora e Relógio.")
                         OutlinedButton(onClick = { SharingService.current?.approveControl() }, modifier = Modifier.fillMaxWidth()) { Text("Autorizar controle nesta sessão") }
                     }
                 }
             }
             var assistanceText by rememberSaveable(active.id) { mutableStateOf("") }
             OutlinedTextField(assistanceText, { assistanceText = it.take(256) }, label = { Text("Campo de teste: texto não sensível") }, modifier = Modifier.fillMaxWidth())
-            val fileLimit = state.policy?.let { "Último limite consultado: ${formatFileLimit(it.maxFileBytes)} por arquivo." }
-                ?: "Máximo de 20 MiB por arquivo."
-            InfoCard("Arquivos escolhidos por você", "Envie ou receba arquivos pelo canal seguro WebRTC. $fileLimit")
+            InfoCard("Arquivos escolhidos por você", "O painel não navega no armazenamento. Todo envio exige um arquivo ou destino escolhido no seletor oficial. Limite de 20 MiB por arquivo; conteúdo trafega no canal WebRTC criptografado.")
             state.filePrompt?.let { file ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -266,7 +255,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     @Composable private fun HistoryScreen(state: HubUiState) {
-        InfoCard("Registro local", "Até 100 eventos de autorização e encerramento.")
+        InfoCard("Registro local", "Até 100 eventos de autorização e encerramento. Não guardamos imagens, texto digitado ou conteúdo dos arquivos.")
         if (state.history.isEmpty()) Text("Nenhuma sessão registrada neste aparelho.")
         state.history.forEach { entry ->
             Card(Modifier.fillMaxWidth()) {
@@ -279,32 +268,41 @@ class MainActivity : ComponentActivity() {
         }
     }
     @Composable private fun SettingsScreen(state: HubUiState) {
-        var newServer by rememberSaveable { mutableStateOf(state.identity?.serverUrl ?: "") }
-        var switching by remember { mutableStateOf(false) }
+        var confirmDisconnect by remember { mutableStateOf(false) }
         var discloseAccessibility by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
-        InfoCard("Servidor conectado atualmente", state.identity?.serverUrl ?: "Nenhum")
-        OutlinedTextField(newServer, { newServer = it }, label = { Text("Trocar URL do Painel (ex.: Vercel)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Button(enabled = newServer.isNotBlank() && !switching, onClick = {
-            switching = true
-            scope.launch {
-                runCatching { HubApi.autoPair(newServer, state.identity?.name ?: Build.MODEL, HubRepository.vault.publicIdentity()) }
-                    .onSuccess { identity -> HubRepository.paired(identity) }
-                    .onFailure { HubRepository.error(it.message ?: "Não foi possível trocar para este servidor") }
-                switching = false
-            }
-        }, modifier = Modifier.fillMaxWidth()) { Text(if (switching) "Conectando…" else "Conectar a este servidor") }
+        InfoCard("Servidor pareado", state.identity!!.serverUrl)
+        InfoCard("Controle assistido opcional", "Permite gestos somente durante uma sessão que você aprovou e apenas no Android Remote Hub, Calculadora e Relógio. Não lê texto, senhas ou notificações. Acessibilidade atual: ${if (state.accessibilityEnabled) "habilitada" else "desabilitada"}.")
         OutlinedButton(onClick = { discloseAccessibility = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar acessibilidade manualmente") }
         OutlinedButton(onClick = { if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS) }, modifier = Modifier.fillMaxWidth(), enabled = Build.VERSION.SDK_INT >= 33) { Text("Permitir notificações de pedidos") }
-        TextButton(onClick = {
-            SharingService.current?.stopNow("Reconectando aparelho")
-            HubRepository.forget()
-        }) { Text("Redefinir conexão e buscar painel novamente", color = MaterialTheme.colorScheme.error) }
+        Text("Sem a permissão, o app aberto continua recebendo pedidos. Durante captura o Android também indica a atividade em seus controles de serviços.", style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(enabled = state.active == null, onClick = {
+            scope.launch {
+                runCatching {
+                    val old = state.identity!!
+                    val rotated = HubApi(old).json("/device/rotate", JSONObject())
+                    HubRepository.paired(old.copy(token = rotated.getString("token")))
+                }.onSuccess { HubRepository.update { it.copy(connection = "Credencial rotacionada com segurança") } }
+                    .onFailure { HubRepository.error("Não foi possível rotacionar. Tente novamente quando estiver conectado.") }
+            }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Rotacionar credencial deste aparelho") }
+        TextButton(onClick = { confirmDisconnect = true }) { Text("Revogar e desconectar este Android", color = MaterialTheme.colorScheme.error) }
         if (discloseAccessibility) AlertDialog(onDismissRequest = { discloseAccessibility = false },
             title = { Text("Divulgação de acessibilidade") },
-            text = { Text("O serviço opcional recebe comandos de toque, deslize, voltar, início e texto durante uma sessão autorizada.") },
-            confirmButton = { TextButton(onClick = { discloseAccessibility = false; startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Abrir configurações Android") } },
+            text = { Text("O serviço recebe comandos de toque, deslize, voltar, início e texto não sensível. Verifica apenas o pacote ativo e se o foco é uma senha, sem coletar o conteúdo. Só atende app, Calculadora e Relógio, com aparelho desbloqueado e sessão autorizada. Você pode suspender localmente e desativar o serviço nas configurações do Android.") },
+            confirmButton = { TextButton(onClick = { discloseAccessibility = false; startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Entendi; abrir configurações Android") } },
             dismissButton = { TextButton(onClick = { discloseAccessibility = false }) { Text("Cancelar") } })
+        if (confirmDisconnect) AlertDialog(onDismissRequest = { confirmDisconnect = false }, title = { Text("Desconectar este aparelho?") },
+            text = { Text("A sessão será encerrada e a credencial revogada no servidor. Um novo acesso exigirá pareamento e consentimento novamente.") },
+            confirmButton = { TextButton(onClick = {
+                confirmDisconnect = false
+                SharingService.current?.stopNow("Aparelho desconectado localmente")
+                scope.launch {
+                    runCatching { HubApi(state.identity!!).revoke() }
+                        .onSuccess { HubRepository.forget() }
+                        .onFailure { HubRepository.error("Revogação não confirmada. Mantenha o app sem compartilhar e revogue pelo painel quando a conexão voltar.") }
+                }
+            }) { Text("Revogar e desconectar") } }, dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text("Cancelar") } })
     }
     @Composable private fun InfoCard(title: String, body: String) {
         Card(Modifier.fillMaxWidth()) {
@@ -314,8 +312,5 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    private fun prettyDate(raw: String): String = runCatching {
-        val parsed = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.parse(raw)
-        if (parsed != null) SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()).format(parsed) else raw
-    }.getOrDefault(raw)
+    private fun prettyDate(raw: String): String = runCatching { DateTimeFormatter.ofPattern("dd/MM HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.parse(raw)) }.getOrDefault(raw)
 }

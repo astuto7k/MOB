@@ -144,8 +144,11 @@ class RtcSession(
         gate.socket(true)
         signalJob = scope.launch {
             var lastSeq = 0
-            runCatching {
+            try {
                 api.json("/sessions/${session.id}/signal", JSONObject().put("type", "join").put("sessionId", session.id))
+            } catch (_: Exception) {
+                end("Não foi possível entrar na sinalização. Confira a API do painel.")
+                return@launch
             }
             while (isActive && !closed.get()) {
                 try {

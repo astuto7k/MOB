@@ -129,9 +129,34 @@ model RemoteSession {
   endReason String? @map("end_reason")
   permissions SessionPermission[]
   fileTransfers FileTransfer[]
+  signalMessages SignalMessage[]
+  signalPeers SignalPeer[]
   @@index([deviceId,status])
   @@index([operatorId,createdAt])
   @@map("remote_sessions")
+}
+
+// Short-lived negotiation only. Video, control and files travel over WebRTC.
+model SignalMessage {
+  seq Int @id @default(autoincrement())
+  sessionId String @db.Uuid @map("session_id")
+  session RemoteSession @relation(fields:[sessionId], references:[id], onDelete:Cascade)
+  sender String
+  type String
+  payload Json
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([sessionId,seq])
+  @@index([createdAt])
+  @@map("signal_messages")
+}
+
+model SignalPeer {
+  sessionId String @db.Uuid @map("session_id")
+  session RemoteSession @relation(fields:[sessionId], references:[id], onDelete:Cascade)
+  role String
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  @@id([sessionId,role])
+  @@map("signal_peers")
 }
 
 model SessionPermission {

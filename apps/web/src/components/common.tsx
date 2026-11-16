@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowDownToLine, ArrowRight, BatteryCharging, BatteryMedium, Check, ChevronRight, Loader2, MonitorSmartphone, Radio, ShieldCheck, Smartphone, Wifi, X } from "lucide-react";
+import { ArrowDownToLine, ArrowRight, BatteryCharging, BatteryMedium, Check, ChevronRight, Copy, Plus, Loader2, MonitorSmartphone, Radio, ShieldCheck, Smartphone, Wifi, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
-import { api, post } from "@/lib/api";
+import { post } from "@/lib/api";
 import { bytes, date, relative, stateLabels } from "@/lib/utils";
-import { deviceOnline, type AuditEvent, type Device, type RemoteSession } from "@/lib/types";
+import { deviceOnline, type AuditEvent, type Device, type Pairing, type RemoteSession } from "@/lib/types";
 
 export function StatusIndicator({ online, label }: { online: boolean; label?: string }) {
   return <span className={`status ${online ? "status-online" : "status-offline"}`}><span className="status-dot" />{label || (online ? "Conectado" : "Desconectado")}</span>;
@@ -35,14 +35,10 @@ export function ConfirmationDialog({ open, onOpenChange, title, description, con
   return <Dialog open={open} onOpenChange={value => { if (!busy) { onOpenChange(value); setError(""); } }} title={title} description={description}>{error && <ErrorAlert>{error}</ErrorAlert>}<div className="dialog-actions"><Button variant="secondary" disabled={busy} onClick={() => onOpenChange(false)}>Cancelar</Button><Button variant="destructive" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await onConfirm(); onOpenChange(false); } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível concluir."); } finally { setBusy(false); } }}>{busy && <Loader2 size={15} className="spin" />}{confirmLabel}</Button></div></Dialog>;
 }
 export function PairingDialog({ open, onOpenChange, refresh }: { open: boolean; onOpenChange: (open: boolean) => void; refresh: () => void }) {
-  const [netInfo, setNetInfo] = useState<{ lanIp?: string; apiUrl?: string; apkDirectUrl?: string }>();
-  useEffect(() => {
-    if (!open) return;
-    api<{ lanIp?: string; apiUrl?: string; apkDirectUrl?: string }>("/health").then(setNetInfo).catch(() => {});
-  }, [open]);
-  const serverAddress = netInfo?.apiUrl || (typeof window !== "undefined" ? window.location.origin : "");
-  const apkUrl = netInfo?.apkDirectUrl || "/apk/MOB.apk";
-  return <Dialog open={open} onOpenChange={value => { onOpenChange(value); if (!value) refresh(); }} title="Instalar APK e Conectar Android" description="Baixe o APK no seu celular e abra o aplicativo — ele aparece conectado automaticamente no painel."><ol className="pairing-steps"><li><span>01</span><div><strong>Instale o APK no seu Android</strong><p>No navegador do celular, acesse <code className="mono">{apkUrl}</code> ou clique abaixo:</p><div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}><Button asChild size="sm"><a href="/apk/MOB.apk" download="MOB.apk"><ArrowDownToLine size={14} />Baixar APK</a></Button></div></div></li><li><span>02</span><div><strong>Abra o aplicativo no celular</strong><p>O app conecta sozinho ao servidor (<span className="mono">{serverAddress}</span>) e já aparece conectado na tela principal!</p></div></li></ol><div className="dialog-actions"><Button onClick={() => { onOpenChange(false); refresh(); }}>Concluir</Button></div></Dialog>;
+  const [pairing, setPairing] = useState<Pairing>(), [busy, setBusy] = useState(false), [error, setError] = useState(""), [now, setNow] = useState(() => Date.now()), [copied, setCopied] = useState(false);
+  useEffect(() => { if (!open) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [open]);
+  const remaining = pairing ? Math.max(0, Math.ceil((new Date(pairing.expiresAt).getTime() - now) / 1000)) : 0;
+  return <Dialog open={open} onOpenChange={value => { onOpenChange(value); if (!value) refresh(); }} title="Conecte um Android" description="O pareamento precisa ser confirmado no aparelho do proprietário."><ol className="pairing-steps"><li><span>01</span><div><strong>Abra o Android Remote Hub no aparelho</strong><p><a href="/apk/MOB.apk" download="MOB.apk">Baixar APK de teste (Android 11 ou superior)</a></p></div></li><li><span>02</span><div><strong>Informe o endereço HTTPS deste servidor</strong><p className="mono server-address">{typeof window !== "undefined" ? window.location.origin : ""}</p></div></li><li><span>03</span><div><strong>Digite o código e confirme o pareamento</strong><p>O código é de uso único e expira em poucos minutos.</p></div></li></ol>{error && <ErrorAlert>{error}</ErrorAlert>}{pairing && <div className={`pairing-code-box ${!remaining ? "expired" : ""}`}><span className="eyebrow">CÓDIGO DE PAREAMENTO</span><div className="pairing-code">{pairing.code}</div><span>{remaining ? `Expira em ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}` : "Código expirado · gere um novo"}</span><Button variant="ghost" size="sm" disabled={!remaining} onClick={async () => { try { await navigator.clipboard.writeText(pairing.code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setError("Não foi possível copiar. Digite o código exibido."); } }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? "Copiado" : "Copiar código"}</Button></div>}<Notice>O pareamento identifica o aparelho. Cada transmissão ainda exige uma nova autorização na tela do Android.</Notice><div className="dialog-actions"><Button variant="secondary" onClick={() => { onOpenChange(false); refresh(); }}>Concluir</Button><Button disabled={busy || (!!pairing && remaining > 0)} onClick={async () => { setBusy(true); setError(""); try { setPairing(await post<Pairing>("/pairing")); setNow(Date.now()); } catch (e) { setError(e instanceof Error ? e.message : "Falha ao gerar código."); } finally { setBusy(false); } }}>{busy ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}Gerar código</Button></div></Dialog>;
 }
 export function RequestSessionDialog({ device, devices, open, onOpenChange, onCreated }: { device?: Device; devices: Device[]; open: boolean; onOpenChange: (open: boolean) => void; onCreated: (session: RemoteSession) => void }) {
   const [selected, setSelected] = useState(""), [control, setControl] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");

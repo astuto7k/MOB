@@ -4,6 +4,7 @@ import { Security,AuthGuard } from './security';
 import { AuthController,AuthService } from './auth';
 import { HubService } from './hub';
 import { SignalingService } from './signaling';
+import { HttpsSignalingController } from './https-signaling';
 import { NotificationsController,NotificationsService } from './notifications';
 import { AuditController,DeviceController,DevicesController,FilesController,HealthController,PairingController,SessionsController,SettingsController,UsersController } from './controllers';
 @Global()
@@ -13,7 +14,7 @@ export class CoreModule {}
 @Module({controllers:[DevicesController,DeviceController]}) export class DevicesModule {}
 @Module({controllers:[PairingController]}) export class PairingModule {}
 @Module({controllers:[SessionsController]}) export class SessionsModule {}
-@Module({providers:[SignalingService],exports:[SignalingService]}) export class SignalingModule {}
+@Module({controllers:[HttpsSignalingController],providers:[SignalingService],exports:[SignalingService]}) export class SignalingModule {}
 @Module({controllers:[AuditController]}) export class AuditModule {}
 @Module({controllers:[FilesController]}) export class FilesModule {}
 @Module({controllers:[NotificationsController],providers:[NotificationsService]}) export class NotificationsModule {}

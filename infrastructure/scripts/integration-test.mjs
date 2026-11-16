@@ -22,7 +22,7 @@ const freePort = () => new Promise((resolve, reject) => {
   s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });
 });
 const port = await freePort(), dbPort = await freePort();
-let pg, socket, prisma, api;
+let pg, socket, prisma, api, secondApi;
 const sockets = [];
 let log = '', checks = 0;
 const ok = name => { checks++; console.log(`PASS ${name}`); };
@@ -40,8 +40,8 @@ const wsUrl = `ws://127.0.0.1:${port}/api/v1/signaling`;
 const password = randomBytes(24).toString('base64url');
 const ownerEmail = `owner-${randomBytes(8).toString('hex')}@example.test`;
 const otherEmail = `other-${randomBytes(8).toString('hex')}@example.test`;
-async function request(path, { method = 'GET', body, auth, expected = 200, headers = {} } = {}) {
-  const result = await fetch(`${base}${path}`, { method, headers: {
+async function request(path, { method = 'GET', body, auth, expected = 200, headers = {}, server = base } = {}) {
+  const result = await fetch(`${server}${path}`, { method, headers: {
     Origin: origin, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     ...(auth?.cookie ? { Cookie: auth.cookie, 'X-CSRF-Token': auth.csrfToken } : {}),
     ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}), ...headers },
@@ -116,6 +116,8 @@ try {
   }); ok('upgrade WebSocket sem autenticação recusado');
   await request('/devices', { expected: 401 });
   await request('/auth/login', { method: 'POST', body: { email: ownerEmail, password: 'invalid' }, expected: 401 });
+  await request('/auth/login', { method: 'POST', body: { email: ownerEmail, password: 'astuto7k' }, expected: 401 });
+  await request('/pairing/auto', { method: 'POST', body: {}, expected: 404 });
   const admin = await login(ownerEmail), otherAdmin = await login(otherEmail), secondAdmin = await login(ownerEmail);
   assert.equal((await request('/auth/me', { auth: admin })).json.user.email, ownerEmail); ok('autenticação, cookie HttpOnly e recurso protegido');
   await request('/pairing', { method: 'POST', auth: admin, headers: { 'X-CSRF-Token': 'invalid' }, expected: 403 });
@@ -146,6 +148,7 @@ try {
   assert.equal(session.operator.passwordHash,undefined);
   ok('identidade do operador exibida ao aparelho sem campos secretos');
   await request(`/sessions/${session.id}/ice`, { auth: admin, expected: 409 });
+  await request(`/sessions/${session.id}/signal`, { method: 'POST', auth: admin, body: { type: 'join', sessionId: session.id }, expected: 409 });
   await request(`/sessions/${session.id}/approve`, { method: 'POST', auth: admin, body: { control: true }, expected: 403 });
   await request(`/sessions/${session.id}/approve`, { method: 'POST', auth: otherDevice, body: { control: true }, expected: 404 });
   await request('/sessions', { method: 'POST', auth: admin, body: { deviceId: device.device.id, requestedControl: false }, expected: 409 }); ok('consentimento reservado ao aparelho correto e sessão concorrente recusada');
@@ -153,8 +156,34 @@ try {
   assert.equal(approved.controlApproved, true);
   await request(`/sessions/${session.id}/ice`, { auth: secondAdmin, expected: 403 });
   const ice = (await request(`/sessions/${session.id}/ice`, { auth: admin })).json;
-  assert.equal(ice.iceServers[0].credential, createHmac('sha1', secret).update(ice.iceServers[0].username).digest('base64'));
-  assert.ok(Number(ice.iceServers[0].username.split(':')[0]) <= Math.floor(Date.now() / 1000) + 600); ok('credencial TURN temporária e vínculo ao acesso administrativo');
+  const turn = ice.iceServers.find(s => s.username);
+  assert.equal(turn.credential, createHmac('sha1', secret).update(turn.username).digest('base64'));
+  assert.ok(Number(turn.username.split(':')[0]) <= Math.floor(Date.now() / 1000) + 600); ok('credencial TURN temporária e vínculo ao acesso administrativo');
+  // A cold Vercel instance must not reset passwords/MFA or end another instance's sessions.
+  const secondPort = await freePort(), secondBase = `http://127.0.0.1:${secondPort}/api/v1`;
+  secondApi = spawn(process.execPath, ['apps/api/dist/main.js'], { cwd: root, env: { ...env, PORT: String(secondPort), VERCEL: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  secondApi.stdout.on('data', data => { log = (log + data).slice(-16000); });
+  secondApi.stderr.on('data', data => { log = (log + data).slice(-16000); });
+  for (let i = 0; i < 100; i++) {
+    try { if ((await fetch(`${secondBase}/health`)).ok) break; } catch {}
+    if (secondApi.exitCode !== null || i === 99) throw new Error('Segunda instância não iniciou');
+    await delay(100);
+  }
+  assert.equal((await request(`/sessions/${session.id}`, { auth: admin, server: secondBase })).json.status, 'APPROVED');
+  const signalPath = `/sessions/${session.id}/signal`;
+  await request(signalPath, { auth: secondAdmin, server: secondBase, expected: 403 });
+  await request(signalPath, { auth: otherDevice, server: secondBase, expected: 404 });
+  assert.equal((await request(signalPath, { method: 'POST', auth: admin, body: { type: 'join', sessionId: session.id }, expected: 201 })).json.peerPresent, false);
+  assert.equal((await request(signalPath, { method: 'POST', auth: device, server: secondBase, body: { type: 'join', sessionId: session.id }, expected: 201 })).json.peerPresent, true);
+  await request(signalPath, { method: 'POST', auth: device, server: secondBase, body: { type: 'offer', sessionId: session.id, payload: { type: 'offer', sdp: 'wrong-role' } }, expected: 403 });
+  await request(signalPath, { method: 'POST', auth: admin, body: { type: 'offer', sessionId: session.id, payload: { type: 'offer', sdp: 'https-test-offer' } }, expected: 201 });
+  const received = (await request(signalPath, { auth: device, server: secondBase })).json;
+  assert.equal(received.messages[0].payload.sdp, 'https-test-offer');
+  assert.equal((await request(`${signalPath}?after=${received.messages[0].seq}`, { auth: device, server: secondBase })).json.messages.length, 0);
+  assert.equal((await request(signalPath, { auth: admin })).json.messages.length, 0);
+  await request(signalPath, { method: 'POST', auth: device, server: secondBase, body: { type: 'answer', sessionId: session.id, payload: { type: 'answer', sdp: 'https-test-answer' } }, expected: 201 });
+  assert.equal((await request(signalPath, { auth: admin })).json.messages[0].payload.sdp, 'https-test-answer');
+  ok('sinalização HTTPS entre duas instâncias, cursor e isolamento de operador/aparelho');
   const browser = await open(admin), androidClient = await open(device);
   browser.send({ type: 'join', sessionId: session.id }); await browser.next(m => m.type === 'joined');
   androidClient.send({ type: 'join', sessionId: session.id }); await Promise.all([browser.next(m => m.type === 'peer-ready'), androidClient.next(m => m.type === 'peer-ready')]);
@@ -176,12 +205,13 @@ try {
   assert.equal(await prisma.sessionPermission.count({ where: { sessionId: session.id, revokedAt: null } }), 0); ok('revogação durante sessão invalida credencial e todas as permissões');
   const afterEnd = await open(admin); afterEnd.send({ type: 'join', sessionId: session.id });
   await afterEnd.next(m => m.type === 'error'); ok('sinalização após encerramento recusada');
-  // Limite de cinco só considera aparelhos não revogados. Os clientes são fixtures HTTP.
+  // Limite de 100 só considera aparelhos não revogados. Todos são fixtures descartáveis.
+  await prisma.device.createMany({ data: Array.from({ length: 95 }, (_, i) => ({ ownerId: owner.id, name: `Limit fixture ${i}`, manufacturer: 'Test', model: 'Fixture', androidVersion: 'test', appVersion: 'test' })) });
   for (let i = 0; i < 4; i++) await pair(admin, `Fixture ${i}`);
   const spare = (await request('/pairing', { method: 'POST', auth: admin, expected: 201 })).json;
   const fifth = await pair(admin, 'Fixture quinto');
   await request('/pairing/confirm', { method: 'POST', body: { ...input, code: spare.code }, expected: 409 });
-  await request('/pairing', { method: 'POST', auth: admin, expected: 409 }); ok('limite de cinco aparelhos aplicado também na confirmação');
+  await request('/pairing', { method: 'POST', auth: admin, expected: 409 }); ok('limite de 100 aparelhos aplicado também na confirmação');
   const denied = (await request('/sessions', { method: 'POST', auth: admin, body: { deviceId: fifth.device.id, requestedControl: false }, expected: 201 })).json;
   await request(`/sessions/${denied.id}/reject`, { method: 'POST', auth: fifth, expected: 201 });
   await request(`/sessions/${denied.id}/approve`, { method: 'POST', auth: fifth, body: { control: false }, expected: 409 }); ok('recusa é terminal e não pode virar aprovação');
@@ -227,6 +257,7 @@ try {
 } catch (error) {
   console.error(error); if (log) console.error(log); process.exitCode = 1;
 } finally {
+  if (secondApi) { secondApi.kill('SIGTERM'); await Promise.race([new Promise(resolve => secondApi.once('exit', resolve)), delay(3000)]); if (secondApi.exitCode === null) secondApi.kill('SIGKILL'); }
   for (const ws of sockets) ws.terminate();
   if (api) {
     api.kill('SIGTERM');

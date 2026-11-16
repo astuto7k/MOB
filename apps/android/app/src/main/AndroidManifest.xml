@@ -6,10 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <application android:name=".HubApplication" android:allowBackup="false"
-        android:label="Android Remote Hub" android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:extractNativeLibs="true"
-        android:usesCleartextTraffic="true"
+        android:label="Android Remote Hub" android:icon="@drawable/ic_hub"
         android:theme="@style/Theme.AndroidRemoteHub" android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules">

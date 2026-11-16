@@ -10,7 +10,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (options.method && !["GET", "HEAD", "OPTIONS"].includes(options.method)) headers.set("x-csrf-token", csrfToken);
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: "include", cache: "no-store" });
+    response = await fetch(`${API_BASE}${path}`, { ...options, signal: options.signal ?? AbortSignal.timeout(8_000), headers, credentials: "include", cache: "no-store" });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError(0, "NETWORK_ERROR", "Não foi possível alcançar o servidor. Verifique sua conexão.");

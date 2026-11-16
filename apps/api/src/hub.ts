@@ -7,7 +7,7 @@ import { digest, token,turnCredential } from './crypto';
 import { Principal,admin,device } from './security';
 import { assertTransition,isTerminal,maySignal,State } from './state';
 import { events } from './events';
-import { heartbeat,pairingConfirm,autoPair } from './validation';
+import { heartbeat,pairingConfirm } from './validation';
 import { z } from 'zod';
 const openStates:SessionStatus[]=['REQUESTED','WAITING_DEVICE','WAITING_APPROVAL','APPROVED','CONNECTING','ACTIVE','ENDING'];
 const defaultSettings={maxSessionMinutes:30,retentionDays:90,maxFileBytes:20971520};
@@ -19,7 +19,7 @@ export function sessionView(s:any){return {id:s.id,deviceId:s.deviceId,operatorI
 export class HubService implements OnModuleInit,OnModuleDestroy {
  private timer:ReturnType<typeof setInterval>|undefined;
  constructor(@Inject(Db) readonly db:Db){}
- async onModuleInit(){for(const s of await this.db.remoteSession.findMany({where:{status:{in:openStates}}}))await this.terminate(s.id,'ENDED','SERVER_RESTART');this.timer=setInterval(()=>{void this.expireSessions().catch(()=>console.error('Session expiry sweep failed'));},1000);this.timer.unref();}
+ async onModuleInit(){if(process.env.VERCEL==='1')return;for(const s of await this.db.remoteSession.findMany({where:{status:{in:openStates}}}))await this.terminate(s.id,'ENDED','SERVER_RESTART');this.timer=setInterval(()=>{void this.expireSessions().catch(()=>console.error('Session expiry sweep failed'));},1000);this.timer.unref();}
  onModuleDestroy(){clearInterval(this.timer);}
  async audit(ownerId:string,type:string,fields:{actorId?:string;deviceId?:string;sessionId?:string;details?:Prisma.InputJsonValue}={}){return this.db.auditEvent.create({data:{ownerId,type,...fields}});}
  async settings(ownerId:string){const s=await this.db.systemSettings.findUnique({where:{ownerId}});return s?{maxSessionMinutes:s.maxSessionMinutes,retentionDays:s.retentionDays,maxFileBytes:s.maxFileBytes}:defaultSettings;}
@@ -28,24 +28,6 @@ export class HubService implements OnModuleInit,OnModuleDestroy {
  async pair(p:Principal){admin(p);const count=await this.db.device.count({where:{ownerId:p.userId,revokedAt:null}});if(count>=100)throw new ConflictException({code:'DEVICE_LIMIT',message:'Limite de aparelhos atingido.'});
   const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const code=Array.from(randomBytes(12),b=>alphabet[b%alphabet.length]).join('');
   const pair=await this.db.pairingRequest.create({data:{ownerId:p.userId,codeHash:digest(code),expiresAt:new Date(Date.now()+5*60_000)}});await this.audit(p.userId,'PAIRING_CREATED',{actorId:p.userId});return {id:pair.id,code,expiresAt:pair.expiresAt};
- }
- async autoConfirmPair(input:z.infer<typeof autoPair>){
-  const raw=token();
-  const owner=await this.db.user.findFirst({orderBy:{createdAt:'asc'}});
-  if(!owner)throw new BadRequestException({code:'NO_OWNER',message:'Servidor ainda não inicializado.'});
-  const expiresAt=new Date(Date.now()+config.DEVICE_CREDENTIAL_DAYS*86400_000);
-  const registered=await this.db.$transaction(async tx=>{
-   let existing=input.publicKey?await tx.device.findFirst({where:{ownerId:owner.id,publicKey:input.publicKey},orderBy:{createdAt:'desc'}}):null;
-   if(existing){
-    await tx.deviceCredential.updateMany({where:{deviceId:existing.id,revokedAt:null},data:{revokedAt:new Date()}});
-    const d=await tx.device.update({where:{id:existing.id},data:{name:input.name,manufacturer:input.manufacturer,model:input.model,androidVersion:input.androidVersion,appVersion:input.appVersion,revokedAt:null,lastSeenAt:new Date(),credentials:{create:{tokenHash:digest(raw),expiresAt}}}});
-    return d;
-   }
-   const d=await tx.device.create({data:{ownerId:owner.id,name:input.name,manufacturer:input.manufacturer,model:input.model,androidVersion:input.androidVersion,appVersion:input.appVersion,publicKey:input.publicKey??null,lastSeenAt:new Date(),credentials:{create:{tokenHash:digest(raw),expiresAt}}}});
-   await tx.auditEvent.create({data:{ownerId:owner.id,deviceId:d.id,type:'DEVICE_PAIRED'}});
-   return d;
-  });
-  return {device:deviceView(registered),token:raw,expiresAt};
  }
  async confirmPair(input:z.infer<typeof pairingConfirm>){
   const raw=token(),pair=await this.db.pairingRequest.findUnique({where:{codeHash:digest(input.code)}});if(!pair)throw new BadRequestException({code:'INVALID_PAIRING',message:'Código inválido, utilizado ou expirado.'});

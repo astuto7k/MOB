@@ -66,10 +66,20 @@ export function useRemote(session: RemoteSession | undefined, refresh: () => voi
     let canceled = false;
     let statsTimer: ReturnType<typeof setInterval> | undefined;
     let pollTimer: ReturnType<typeof setInterval> | undefined;
+    let polling = false;
     let offered = false;
     let lastSeq = 0;
     const iceQueue: RTCIceCandidateInit[] = [];
     const fail = (message: string) => { setError(message); setConnection("Conexão interrompida"); close(); };
+    verifiedRef.current = Date.now();
+    const leaseTimer = setInterval(() => {
+      if (Date.now() - verifiedRef.current >= 10_000) {
+        canceled = true;
+        if (pollTimer) clearInterval(pollTimer);
+        if (leaseTimer) clearInterval(leaseTimer);
+        fail("A autorização do servidor expirou. Inicie uma nova sessão.");
+      }
+    }, 1000);
 
     const start = async () => {
       try {
@@ -145,10 +155,10 @@ export function useRemote(session: RemoteSession | undefined, refresh: () => voi
         const sendSignal = async (type: string, payload?: unknown) => {
           try {
             return await post<{ ok: boolean; peerPresent?: boolean }>(`/sessions/${session.id}/signal`, { type, sessionId: session.id, ...(payload ? { payload } : {}) });
-          } catch { return undefined; }
+          } catch (e) { fail(e instanceof Error ? e.message : "Falha na sinalização."); throw e; }
         };
 
-        pc.onicecandidate = event => { if (event.candidate) void sendSignal("ice", event.candidate.toJSON()); };
+        pc.onicecandidate = event => { if (event.candidate) void sendSignal("ice", event.candidate.toJSON()).catch(() => {}); };
         pc.onconnectionstatechange = () => {
           if (pc.connectionState === "connected") { setConnection("Conectado"); verifiedRef.current = Date.now(); refresh(); }
           else if (["failed", "disconnected"].includes(pc.connectionState)) fail("A conexão com o Android foi perdida. Inicie uma nova sessão para continuar.");
@@ -166,7 +176,8 @@ export function useRemote(session: RemoteSession | undefined, refresh: () => voi
         }
 
         pollTimer = setInterval(async () => {
-          if (canceled) return;
+          if (canceled || polling) return;
+          polling = true;
           try {
             const data = await api<{ messages: Array<{ seq: number; type: string; payload?: RTCSessionDescriptionInit & RTCIceCandidateInit }>; peerPresent?: boolean; session?: RemoteSession }>(`/sessions/${session.id}/signal?after=${lastSeq}`);
             verifiedRef.current = Date.now();
@@ -200,7 +211,8 @@ export function useRemote(session: RemoteSession | undefined, refresh: () => voi
               close();
               refresh();
             }
-          } catch {}
+          } catch { /* The independent lease timer closes stale authority. */ }
+          finally { polling = false; }
         }, 700);
 
         statsTimer = setInterval(async () => {
@@ -221,12 +233,12 @@ export function useRemote(session: RemoteSession | undefined, refresh: () => voi
       } catch (e) { if (!canceled) fail(e instanceof Error ? e.message : "Não foi possível iniciar WebRTC."); }
     };
     void start();
-    return () => { canceled = true; if (pollTimer) clearInterval(pollTimer); if (statsTimer) clearInterval(statsTimer); close(); startedRef.current = false; };
+    return () => { canceled = true; if (pollTimer) clearInterval(pollTimer); if (statsTimer) clearInterval(statsTimer); if (leaseTimer) clearInterval(leaseTimer); close(); startedRef.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, !!session && ["APPROVED", "CONNECTING", "ACTIVE"].includes(session.status), close, audit, refresh, updateTransfer]);
 
   useEffect(() => () => { for (const url of activeUrls.current) URL.revokeObjectURL(url); }, []);
-  const canInteract = useCallback(() => sessionRef.current?.status === "ACTIVE" && Date.now() < new Date(sessionRef.current.expiresAt).getTime() && pcRef.current?.connectionState === "connected", []);
+  const canInteract = useCallback(() => sessionRef.current?.status === "ACTIVE" && Date.now() - verifiedRef.current < 10_000 && Date.now() < new Date(sessionRef.current.expiresAt).getTime() && pcRef.current?.connectionState === "connected", []);
   const sendControl = useCallback((action: Record<string, unknown>) => {
     if (!canInteract() || !sessionRef.current?.controlApproved || controlRef.current?.readyState !== "open") return false;
     controlRef.current.send(JSON.stringify({ ...action, seq: ++seqRef.current })); return true;

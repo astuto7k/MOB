@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Db } from './db';
 import { HubService,deviceView,sessionView } from './hub';
 import { admin,AuthGuard,AuthedRequest,device } from './security';
-import { heartbeat,pairingConfirm,autoPair,parse,uuid } from './validation';
+import { heartbeat,pairingConfirm,parse,uuid } from './validation';
 @UseGuards(AuthGuard)
 @Controller('devices')
 export class DevicesController {
@@ -18,7 +18,6 @@ export class PairingController {
  constructor(@Inject(HubService) private readonly hub:HubService){}
  @UseGuards(AuthGuard) @Post() create(@Req() req:AuthedRequest){return this.hub.pair(req.principal);}
  @Post('confirm') confirm(@Body() body:unknown){return this.hub.confirmPair(parse(pairingConfirm,body));}
- @Post('auto') auto(@Body() body:unknown){return this.hub.autoConfirmPair(parse(autoPair,body));}
  @UseGuards(AuthGuard) @Post('revoke') revoke(@Body() body:unknown,@Req() req:AuthedRequest){return this.hub.revokePair(req.principal,parse(z.object({id:uuid}).strict(),body).id);}
 }
 @UseGuards(AuthGuard)
@@ -68,22 +67,10 @@ export class FilesController {
  @Post() async record(@Body() body:unknown,@Req() req:AuthedRequest){const input=parse(fileSchema,body),s=await this.hub.signalAuthorized(req.principal,input.sessionId),settings=await this.hub.settings(req.principal.userId);if(s.status!=='ACTIVE')throw new BadRequestException({code:'SESSION_NOT_ACTIVE',message:'É necessária uma sessão ativa.'});if(input.size>settings.maxFileBytes)throw new BadRequestException({code:'FILE_TOO_LARGE',message:'Arquivo excede o limite configurado.'});const transfer=await this.db.fileTransfer.create({data:input});await this.hub.audit(req.principal.userId,'FILE_TRANSFER_REPORTED',{deviceId:s.deviceId,sessionId:s.id,details:{transferId:transfer.id,direction:input.direction,size:input.size,status:input.status}});return transfer;}
  @Get() async list(@Req() req:AuthedRequest){const p=admin(req.principal);return this.db.fileTransfer.findMany({where:{session:{operatorId:p.userId}},orderBy:{createdAt:'desc'},take:100});}
 }
-import os from 'node:os';
-function detectLanIp(): string {
- const nets = os.networkInterfaces();
- for (const name of Object.keys(nets)) {
-  for (const net of nets[name] || []) {
-   if (net.family === 'IPv4' && !net.internal && (net.address.startsWith('192.168.') || net.address.startsWith('10.') || /^172\.(1[6-9]|2\d|3[0-1])\./.test(net.address))) {
-    return net.address;
-   }
-  }
- }
- return '127.0.0.1';
-}
 @Controller('health')
 export class HealthController {
  constructor(@Inject(Db) private readonly db:Db){}
- @Get() async health(){await this.db.$queryRaw`SELECT 1`;const lanIp=detectLanIp();return {status:'ok',time:new Date(),lanIp,apiUrl:`http://${lanIp}:3001`,panelUrl:`http://${lanIp}:3000`,apkDirectUrl:`http://${lanIp}:3000/apk/MOB-RedmiNote12.apk`,apkFullUrl:`http://${lanIp}:3000/apk/MOB-Completo-ComControle.apk`};}
+ @Get() async health(){await this.db.$queryRaw`SELECT 1`;return {status:'ok',service:'mob-api',time:new Date(),signaling:'https-polling',storage:'postgresql'};}
 }
 
 @UseGuards(AuthGuard)

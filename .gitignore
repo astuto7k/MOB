@@ -24,3 +24,4 @@ infrastructure/coturn/certs/
 backups/
 secrets/
 .DS_Store
+*.tsbuildinfo

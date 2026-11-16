@@ -1,3 +1,7 @@
+# Testes na Vercel
+
+Para publicar e usar o APK com o endereço gratuito da Vercel, siga [docs/VERCEL.md](docs/VERCEL.md). A versão 0.5 exige banco PostgreSQL e pareamento por código; não há senha padrão nem cadastro automático de aparelhos.
+
 # Android Remote Hub — evolução Android0.2.0
 
 Cópia independente criada após análise estática do APK fornecido. Inclui central de privacidade/diagnóstico, política real e identidade mínima do operador. Não incorpora código/assets do concorrente nem coleta de credenciais/interferência em proteções. Consulte [o relatório desta evolução](docs/RELATORIO_FINAL.md).

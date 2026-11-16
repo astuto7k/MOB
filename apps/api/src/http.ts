@@ -17,7 +17,7 @@ export function rateLimit(){
  return(req:Request,res:Response,next:NextFunction)=>{
   if(req.path.endsWith('/health'))return next();
   const sensitive=/\/(auth\/(login|recovery)|pairing\/confirm)$/.test(req.path);
-  const key=`${req.ip}:${sensitive?'sensitive':'general'}`,now=Date.now(),window=sensitive?15*60_000:60_000,limit=sensitive?20:240;
+  const key=`${req.ip}:${sensitive?'sensitive':'general'}`,now=Date.now(),window=sensitive?15*60_000:60_000,limit=sensitive?20:1200;
   let bucket=buckets.get(key);if(!bucket||bucket.until<=now){bucket={count:0,until:now+window};buckets.set(key,bucket);}
   if(buckets.size>10000){for(const [k,v] of buckets)if(v.until<=now)buckets.delete(k);if(buckets.size>10000)buckets.delete(buckets.keys().next().value!);}
   if(++bucket.count>limit){res.setHeader('Retry-After',Math.ceil((bucket.until-now)/1000));res.status(429).json({code:'RATE_LIMITED',message:'Muitas tentativas. Aguarde antes de tentar novamente.'});return;}
