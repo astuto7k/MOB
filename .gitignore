@@ -8,9 +8,9 @@ coverage/
 .local-logs/
 arquivos-completos/
 *.apk
-!apps/web/public/apk/*.apk
-!MOB-RedmiNote12.apk
-!MOB-Completo-ComControle.apk
+*.idsig
+!apps/web/public/apk/MOB.apk
+!MOB.apk
 *.aab
 *.jks
 *.keystore

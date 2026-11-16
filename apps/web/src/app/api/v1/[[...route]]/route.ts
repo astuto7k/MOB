@@ -297,8 +297,7 @@ async function handle(req: NextRequest, context: { params: Promise<{ route?: str
       lanIp,
       apiUrl: baseOrigin,
       panelUrl: baseOrigin,
-      apkDirectUrl: `${baseOrigin}/apk/MOB-RedmiNote12.apk`,
-      apkFullUrl: `${baseOrigin}/apk/MOB-Completo-ComControle.apk`,
+      apkDirectUrl: `${baseOrigin}/apk/MOB.apk`,
     });
   }
 
