@@ -1,0 +1,11 @@
+{
+  "servers": [
+    "https://mob-gamma.vercel.app",
+    "https://mob-astuto7k.vercel.app",
+    "https://mob-astuto7ks-projects.vercel.app",
+    "https://mob-git-main-astuto7ks-projects.vercel.app",
+    "https://mob.vercel.app",
+    "http://192.168.0.9:3000",
+    "http://192.168.0.9:3001"
+  ]
+}

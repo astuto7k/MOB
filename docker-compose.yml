@@ -1,0 +1,121 @@
+name: android-remote-hub
+services:
+  postgres:
+    image: postgres:18.7-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-arh}
+      POSTGRES_USER: ${POSTGRES_USER:-arh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 128mb
+    security_opt: [no-new-privileges:true]
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-arh}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-arh}
+      WEB_ORIGIN: https://${PANEL_DOMAIN:?Defina PANEL_DOMAIN}
+      TRUST_PROXY: '1'
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [backend, edge]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_INTERNAL_URL: http://api:3001
+    networks: [edge]
+    read_only: true
+    tmpfs: [/tmp, /app/apps/web/.next/cache]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    depends_on:
+      api: {condition: service_healthy}
+      web: {condition: service_healthy}
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/health']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+  coturn:
+    image: coturn/coturn:4.18.0-r0
+    restart: unless-stopped
+    # Linux VPS: reduz complexidade de NAT e mantém o range de relay previsível.
+    network_mode: host
+    entrypoint: [/bin/sh, /opt/arh/start.sh]
+    environment:
+      TURN_SECRET: ${TURN_SECRET:?Defina TURN_SECRET}
+      TURN_PUBLIC_IP: ${TURN_PUBLIC_IP:?Defina TURN_PUBLIC_IP}
+      TURN_DOMAIN: ${TURN_DOMAIN:?Defina TURN_DOMAIN}
+      TURN_TLS_ENABLED: ${TURN_TLS_ENABLED:-0}
+    volumes:
+      - ./infrastructure/coturn/start.sh:/opt/arh/start.sh:ro
+      - ./infrastructure/coturn/turnserver.conf:/opt/arh/turnserver.conf:ro
+      - ./infrastructure/coturn/certs:/certs:ro
+    tmpfs: [/tmp]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD-SHELL, 'kill -0 1']
+      interval: 30s
+      timeout: 3s
+      retries: 3
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+networks:
+  backend: {internal: true}
+  edge:

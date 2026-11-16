@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SessionStatus {
+  REQUESTED
+  WAITING_DEVICE
+  WAITING_APPROVAL
+  APPROVED
+  CONNECTING
+  ACTIVE
+  ENDING
+  ENDED
+  REJECTED
+  EXPIRED
+  FAILED
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique
+  passwordHash String @map("password_hash")
+  mfaEnabled Boolean @default(false) @map("mfa_enabled")
+  mfaSecret String? @map("mfa_secret")
+  mfaPendingSecret String? @map("mfa_pending_secret")
+  mfaLastStep BigInt? @map("mfa_last_step")
+  recoveryHashes String[] @default([]) @map("recovery_hashes")
+  failedLoginCount Int @default(0) @map("failed_login_count")
+  lockedUntil DateTime? @map("locked_until")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  adminSessions AdminSession[]
+  devices Device[]
+  pairings PairingRequest[]
+  remoteSessions RemoteSession[]
+  settings SystemSettings?
+  @@map("users")
+}
+
+model AdminSession {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid @map("user_id")
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  tokenHash String @unique @map("token_hash")
+  csrfHash String @map("csrf_hash")
+  userAgent String @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  remoteSessions RemoteSession[]
+  @@index([userId,expiresAt])
+  @@map("admin_sessions")
+}
+
+model Device {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid @map("owner_id")
+  owner User @relation(fields:[ownerId], references:[id], onDelete:Cascade)
+  name String
+  manufacturer String
+  model String
+  androidVersion String @map("android_version")
+  appVersion String @map("app_version")
+  publicKey String? @map("public_key")
+  battery Int?
+  charging Boolean?
+  network String?
+  pushToken String? @map("push_token")
+  permissions Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  revokedAt DateTime? @map("revoked_at")
+  credentials DeviceCredential[]
+  remoteSessions RemoteSession[]
+  pairings PairingRequest[]
+  @@index([ownerId,revokedAt])
+  @@map("devices")
+}
+
+model DeviceCredential {
+  id String @id @default(uuid()) @db.Uuid
+  deviceId String @db.Uuid @map("device_id")
+  device Device @relation(fields:[deviceId],references:[id],onDelete:Cascade)
+  tokenHash String @unique @map("token_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  @@index([deviceId,expiresAt])
+  @@map("device_credentials")
+}
+
+model PairingRequest {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid @map("owner_id")
+  owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+  codeHash String @unique @map("code_hash")
+  expiresAt DateTime @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  revokedAt DateTime? @map("revoked_at")
+  deviceId String? @db.Uuid @map("device_id")
+  device Device? @relation(fields:[deviceId],references:[id],onDelete:SetNull)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([ownerId,expiresAt])
+  @@map("pairing_requests")
+}
+
+model RemoteSession {
+  id String @id @default(uuid()) @db.Uuid
+  deviceId String @db.Uuid @map("device_id")
+  device Device @relation(fields:[deviceId],references:[id],onDelete:Cascade)
+  operatorId String @db.Uuid @map("operator_id")
+  operator User @relation(fields:[operatorId],references:[id],onDelete:Cascade)
+  adminSessionId String @db.Uuid @map("admin_session_id")
+  adminSession AdminSession @relation(fields:[adminSessionId],references:[id],onDelete:Cascade)
+  status SessionStatus @default(REQUESTED)
+  requestedControl Boolean @default(false) @map("requested_control")
+  controlApproved Boolean @default(false) @map("control_approved")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  approvalExpiresAt DateTime @map("approval_expires_at")
+  expiresAt DateTime @map("expires_at")
+  startedAt DateTime? @map("started_at")
+  endedAt DateTime? @map("ended_at")
+  endReason String? @map("end_reason")
+  permissions SessionPermission[]
+  fileTransfers FileTransfer[]
+  @@index([deviceId,status])
+  @@index([operatorId,createdAt])
+  @@map("remote_sessions")
+}
+
+model SessionPermission {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid @map("session_id")
+  session RemoteSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+  kind String
+  grantedAt DateTime @default(now()) @map("granted_at")
+  revokedAt DateTime? @map("revoked_at")
+  @@unique([sessionId,kind])
+  @@map("session_permissions")
+}
+
+model AuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String? @db.Uuid @map("actor_id")
+  ownerId String @db.Uuid @map("owner_id")
+  deviceId String? @db.Uuid @map("device_id")
+  sessionId String? @db.Uuid @map("session_id")
+  type String
+  details Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([ownerId,createdAt])
+  @@index([sessionId])
+  @@map("audit_events")
+}
+
+model FileTransfer {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid @map("session_id")
+  session RemoteSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+  direction String
+  name String
+  size Int
+  sha256 String
+  status String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([sessionId,createdAt])
+  @@map("file_transfers")
+}
+
+model SystemSettings {
+  ownerId String @id @db.Uuid @map("owner_id")
+  owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+  maxSessionMinutes Int @default(30) @map("max_session_minutes")
+  retentionDays Int @default(90) @map("retention_days")
+  maxFileBytes Int @default(20971520) @map("max_file_bytes")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("system_settings")
+}

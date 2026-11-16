@@ -1,0 +1,10 @@
+Painel Local: http://localhost:3000/login
+Painel na Rede Local (Wi-Fi): http://192.168.0.9:3000/login
+Repositório GitHub (pronto para Vercel): https://github.com/astuto7k/MOB
+
+Senha de acesso (não precisa de e-mail):
+astuto7k
+
+Como funciona:
+1. Instale o APK (MOB-RedmiNote12.apk) em qualquer Android.
+2. Basta abrir o aplicativo no celular: ele se registra sozinho e já aparece conectado no seu painel!

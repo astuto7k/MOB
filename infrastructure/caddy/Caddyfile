@@ -1,0 +1,39 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+(security) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+	request_body {
+		max_size 1MB
+	}
+}
+{$PANEL_DOMAIN} {
+	import security
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}
+{$API_DOMAIN} {
+	import security
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+	handle {
+		respond 404
+	}
+}
+http://:8080 {
+	respond /health "ok" 200
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Retencao da auditoria do Android Remote Hub
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/android-remote-hub
+ExecStart=/usr/bin/docker compose exec -T api npm run cleanup -w @arh/api
+User=root
+NoNewPrivileges=true

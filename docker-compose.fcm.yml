@@ -1,0 +1,9 @@
+# Use: docker compose -f docker-compose.yml -f docker-compose.fcm.yml ...
+services:
+  api:
+    environment:
+      FCM_SERVICE_ACCOUNT_FILE: /run/secrets/fcm_service_account
+    secrets: [fcm_service_account]
+secrets:
+  fcm_service_account:
+    file: ${FCM_SERVICE_ACCOUNT_HOST_FILE:?Informe o caminho externo do JSON Firebase}

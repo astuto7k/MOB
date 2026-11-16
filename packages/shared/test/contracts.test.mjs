@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
+const {validControl,MAX_FILE_BYTES}=createRequire(import.meta.url)('../dist/index.js');
+test('control contract rejects malformed coordinates and arbitrary commands',()=>{assert.equal(validControl({type:'tap',seq:0,x:0.5,y:0}),true);for(const x of [NaN,Infinity,-0.1,1.1,'0.5'])assert.equal(validControl({type:'tap',seq:1,x,y:0}),false);assert.equal(validControl({type:'shell',seq:2,command:'id'}),false);assert.equal(validControl({type:'text',seq:3,text:'a\nb'}),false);assert.equal(MAX_FILE_BYTES,20971520);});

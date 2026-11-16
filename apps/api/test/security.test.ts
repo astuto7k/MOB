@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { base32,unbase32,totp,verifyTotp,encrypt,decrypt,digest,turnCredential,csrfFor } from '../src/crypto';
+import { assertTransition,mayControl,maySignal } from '../src/state';
+import { signaling,pairingConfirm } from '../src/validation';
+test('RFC 6238 SHA-1 TOTP vector, skew and replay protection',()=>{
+ const secret=base32(Buffer.from('12345678901234567890'));
+ assert.equal(totp(secret,1),'287082');assert.equal(verifyTotp(secret,'287082',null,59000),1);assert.equal(verifyTotp(secret,'287082',1n,59000),null);assert.equal(verifyTotp(secret,'000000',null,59000),null);assert.deepEqual(unbase32(secret),Buffer.from('12345678901234567890'));
+});
+test('encrypted MFA/token storage authenticates ciphertext and key',()=>{const key=randomBytes(32),encrypted=encrypt('sensitive',key);assert.equal(decrypt(encrypted,key),'sensitive');assert.throws(()=>decrypt(encrypted,randomBytes(32)));const raw=Buffer.from(encrypted,'base64');raw[30]^=1;assert.throws(()=>decrypt(raw.toString('base64'),key));assert.notEqual(digest('secret'),'secret');});
+test('CSRF derived secret and TURN HMAC credentials bind identity',()=>{const key=randomBytes(32);assert.notEqual(csrfFor('one',key),csrfFor('two',key));assert.equal(turnCredential('secret','123:session'),'wEe8/xdtBtcqwLlpVBcyeRFsfDI=');});
+test('closed sessions cannot regain authorization',()=>{for(const state of ['ENDED','REJECTED','EXPIRED','FAILED'] as const)for(const target of ['APPROVED','ACTIVE','CONNECTING'] as const)assert.throws(()=>assertTransition(state,target));assertTransition('WAITING_APPROVAL','APPROVED');assertTransition('APPROVED','ACTIVE');assert.throws(()=>assertTransition('WAITING_APPROVAL','ACTIVE'));});
+test('control requires ACTIVE, explicit grant, unexpired authorization and live device',()=>{const future=new Date(Date.now()+10000),past=new Date(0);assert.equal(mayControl('ACTIVE',true,future,false),true);for(const state of ['APPROVED','ENDED','REQUESTED','EXPIRED'])assert.equal(mayControl(state,true,future,false),false);assert.equal(mayControl('ACTIVE',false,future,false),false);assert.equal(mayControl('ACTIVE',true,past,false),false);assert.equal(mayControl('ACTIVE',true,future,true),false);assert.equal(maySignal('WAITING_APPROVAL',future,false),false);});
+test('signaling and pairing input reject token injection, arbitrary control and oversized data',()=>{const id='11111111-1111-4111-8111-111111111111';assert.equal(signaling.safeParse({type:'join',sessionId:id}).success,true);assert.equal(signaling.safeParse({type:'join',sessionId:id,token:'secret'}).success,false);assert.equal(signaling.safeParse({type:'control',sessionId:id,payload:{type:'shell'}}).success,false);assert.equal(signaling.safeParse({type:'offer',sessionId:id,payload:{type:'offer',sdp:'x'.repeat(131073)}}).success,false);assert.equal(pairingConfirm.safeParse({code:'ABC',name:'x',manufacturer:'x',model:'x',androidVersion:'16',appVersion:'1'}).success,false);});

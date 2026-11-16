@@ -1,0 +1,17 @@
+# Segurança e modelo de ameaça
+
+Destinado a um proprietário com até cinco aparelhos e uma VPS sob seu controle. Não é um serviço multiempresa nem substitui controles de gestão corporativa. A confiança inclui Android, navegador, sistema da VPS e seu administrador. Uma VPS comprometida pode alterar o software distribuído e a sinalização; não há atestação remota nem verificação independente por código curto entre os peers.
+
+Senhas recebem Argon2id. Sessões usam entropia criptográfica, hash no banco, expiração e revogação; cookie administrativo em produção tem Secure, HttpOnly, SameSite=Strict e prefixo __Host. POST/PATCH/DELETE administrativos exigem Origin permitido e `x-csrf-token`; a sinalização exige cookie e Origin. Bearers Android são distintos por aparelho, cifrados localmente com Keystore, guardados como hash no servidor e nunca incluídos em URLs. TLS usa validação normal da cadeia/hostname. Não há trust-all.
+
+MFA TOTP usa segredo cifrado AES-GCM por MASTER_KEY; códigos de recuperação são de uso único e guardados como hash. Guarde os códigos fora da VPS. A recuperação troca a senha, desativa MFA para recadastro e revoga acessos/sessões. Não há envio de senha por e-mail nem endpoint público de criação de administrador. Use o bootstrap local. Limites por IP e bloqueio por conta reduzem tentativas; Redis distribuído não foi implementado porque a implantação é de uma instância.
+
+Visualização e controle são autorizações diferentes. Mesmo com credencial válida, o painel só pede assistência; o Android decide. O serviço de acessibilidade só age com concessão ativa e consentimento local. Encerrar/recusar/revogar invalida a sessão. Desconexão da sinalização fecha a mídia, e uma concessão curta limita a janela entre revogação do servidor e recebimento no Android. Consulte a implementação para a duração exata; nunca se promete revogação instantânea durante uma partição de rede.
+
+Não há microfone, câmera remota, leitura de APIs de contatos/SMS/notificações privadas, shell, instalação remota de APK, keylogger, gravação, desbloqueio ou contorno de FLAG_SECURE. A tela integral autorizada pode mostrar conteúdo privado visível; o proprietário deve fechar esse conteúdo antes de compartilhar, pois não existe redação universal automática. O campo de texto remoto é transitório, não auditado, restrito à sessão e aos aplicativos benignos permitidos. O aplicativo não oferece execução de operações financeiras.
+
+O TURN exige credenciais temporárias e impõe quota/banda; redes privadas/metadados são negados como destino de relay. Não deixe `no-auth` nem portas administrativas TURN públicas. O TLS do TURN é opcional e independente do HTTPS; o WebRTC mantém sua própria cifra de mídia mesmo quando usa TURN/UDP.
+
+As variáveis .env e certificados não devem entrar em Git/ZIP. Restrinja `.env` e chaves a 0600, faça backup offline de MASTER_KEY e mantenha a chave privada age fora da VPS. Os scripts de backup não persistem dumps puros. Auditoria e nomes de arquivos são dados do proprietário; configure retenção e limite acesso ao banco. Logs HTTP não devem incluir cookies, corpos, SDP, tokens ou conteúdo dos canais.
+
+Para reportar uma falha, registre versão, rota, pré-condições e reprodução sem incluir segredos. Suspenda acessos, revogue o dispositivo/sessões afetados, preserve metadados de auditoria e rotacione as credenciais comprometidas. Rotacionar MASTER_KEY sem recifrar MFA invalida segredos existentes; planeje recadastro/recuperação e não substitua a chave arbitrariamente.

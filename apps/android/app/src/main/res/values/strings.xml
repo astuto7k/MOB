@@ -1,0 +1,3 @@
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="pt">
+    <string name="accessibility_description">Permite apenas toques, gestos e texto enviados durante uma sessão que você aprovou. Funciona no Android Remote Hub, Calculadora e Relógio. Não lê texto da tela, senhas, SMS ou notificações. Interrompa pelo botão Suspender controle ou pela notificação. Desative a qualquer momento nas configurações de acessibilidade.</string>
+</resources>

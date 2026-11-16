@@ -1,0 +1,12 @@
+[Unit]
+Description=Backup criptografado do Android Remote Hub
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/android-remote-hub
+ExecStart=/opt/android-remote-hub/infrastructure/scripts/backup.sh
+User=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
