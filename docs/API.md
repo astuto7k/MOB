@@ -4,7 +4,7 @@ Base: `/api/v1`. JSON UTF-8. API e painel ficam sob a mesma origem em produção
 
 ## Autenticação e autorização
 
-O proprietário entra por e-mail/senha e, quando habilitado, TOTP. A resposta cria um cookie de sessão opaco, HttpOnly, SameSite=Strict e Secure em produção (`__Host-arh_admin`, sem Domain, Path=/). Desenvolvimento usa `arh_admin`. O servidor armazena SHA-256 do token aleatório. Duração absoluta padrão: oito horas, configurável entre uma e 24.
+O proprietário entra apenas com a senha e, quando habilitado, TOTP. O e-mail é um identificador interno; não é exigido no formulário. A resposta cria um cookie de sessão opaco, HttpOnly, SameSite=Strict e Secure em produção (`__Host-arh_admin`, sem Domain, Path=/). Desenvolvimento usa `arh_admin`. O servidor armazena SHA-256 do token aleatório. Duração absoluta padrão: oito horas, configurável entre uma e 24.
 
 `GET /auth/me` e login retornam `csrfToken`. Toda mutação autenticada por cookie exige `X-CSRF-Token` e `Origin` exatamente igual a `WEB_ORIGIN`; CORS permite somente essa origem. O token anti-CSRF fica em memória no painel, não em localStorage. Login e recuperação rejeitam Origin divergente. Android usa `Authorization: Bearer <credencial-individual>`, nunca token em URL. Credenciais do Android expiram em 30 dias por padrão, com máximo de 90, e são armazenadas apenas como hash no servidor.
 
@@ -20,7 +20,7 @@ Listas são arrays JSON diretos, sem envelope ou paginação nesta versão; disp
 
 Erros usam `{ "code": "CODIGO", "message": "Mensagem" }`; erros de validação podem incluir `fields: [{path,message}]`. Campos extras são rejeitados. Exemplos: `INVALID_INPUT`/400, `INVALID_JSON`/400, `PAYLOAD_TOO_LARGE`/413, `INVALID_CREDENTIALS`/401, `MFA_REQUIRED`/401, `UNAUTHORIZED`/401, `CSRF_REJECTED`/403, `NOT_FOUND`/404, `DEVICE_LIMIT`/409, `SESSION_EXISTS`/409, `INVALID_SESSION_STATE`/409, `RATE_LIMITED`/429. Recursos de outro proprietário retornam 404. Corpo HTTP limitado a 192 KiB; arquivos não passam por HTTP.
 
-Limites de uma instância: 240 requisições gerais/minuto/IP; login, recuperação e confirmação de pareamento compartilham 20 tentativas/15 minutos/IP; conta bloqueada por 15 minutos após cinco falhas. `Retry-After` informa espera no limite por IP. Falhas TOTP também contam para bloqueio. TOTP possui seis dígitos, passo de 30 segundos, tolerância de um passo e recusa reutilização do mesmo passo. Sincronize relógios por NTP. O código recém-usado ao habilitar MFA não pode ser usado novamente no login.
+Limites de uma instância: 1200 requisições gerais/minuto/IP; login, recuperação e confirmação de pareamento compartilham 20 tentativas/15 minutos/IP; conta bloqueada por 15 minutos após cinco falhas. `Retry-After` informa espera no limite por IP. Falhas TOTP também contam para bloqueio. TOTP possui seis dígitos, passo de 30 segundos, tolerância de um passo e recusa reutilização do mesmo passo. Sincronize relógios por NTP. O código recém-usado ao habilitar MFA não pode ser usado novamente no login.
 
 ## Endpoints
 
@@ -28,7 +28,7 @@ Legenda: **P** público; **A** proprietário por cookie e CSRF nas mutações; *
 
 | Método/caminho | Papel | Entrada e resposta |
 |---|---|---|
-| POST `/auth/login` | P | `{email,password,totp?}` → `{user:{id,email,mfaEnabled},csrfToken}` e cookie. Ausência de TOTP em conta com MFA retorna `MFA_REQUIRED`. |
+| POST `/auth/login` | P | `{password,totp?,email?}` → `{user:{id,email,mfaEnabled},csrfToken}` e cookie. Ausência de TOTP em conta com MFA retorna `MFA_REQUIRED`. |
 | POST `/auth/recovery` | P | `{email,recoveryCode,newPassword}` → `{ok:true}`; senha de 12 a 128 caracteres. |
 | GET `/auth/me` | A | `{user,csrfToken}`. |
 | POST `/auth/logout` | A | `{}` → `{ok:true}`; revoga acesso atual e encerra sessões remotas associadas. |

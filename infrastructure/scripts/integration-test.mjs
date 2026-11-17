@@ -40,6 +40,14 @@ const wsUrl = `ws://127.0.0.1:${port}/api/v1/signaling`;
 const password = randomBytes(24).toString('base64url');
 const ownerEmail = `owner-${randomBytes(8).toString('hex')}@example.test`;
 const otherEmail = `other-${randomBytes(8).toString('hex')}@example.test`;
+env.BOOTSTRAP_OWNER_EMAIL = ownerEmail;
+async function runBootstrap(bootstrapEnv) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['apps/api/dist/cloud-bootstrap.js'], { cwd: root, env: bootstrapEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    let message = ''; child.stderr.on('data', data => { message += data; });
+    child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(`Bootstrap de teste falhou: ${message}`)));
+  });
+}
 async function request(path, { method = 'GET', body, auth, expected = 200, headers = {}, server = base } = {}) {
   const result = await fetch(`${server}${path}`, { method, headers: {
     Origin: origin, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -50,8 +58,8 @@ async function request(path, { method = 'GET', body, auth, expected = 200, heade
   assert.equal(result.status, expected, `${method} ${path}: ${JSON.stringify(json)}`);
   return { json, response: result };
 }
-async function login(email, code) {
-  const r = await request('/auth/login', { method: 'POST', body: { email, password, ...(code ? { totp: code } : {}) }, expected: 201 });
+async function login(email, code, server = base, value = password) {
+  const r = await request('/auth/login', { method: 'POST', body: { ...(email ? { email } : {}), password: value, ...(code ? { totp: code } : {}) }, expected: 201, server });
   const cookie = r.response.headers.get('set-cookie')?.split(';')[0]; assert.ok(cookie);
   assert.match(r.response.headers.get('set-cookie'), /HttpOnly/i);
   return { cookie, csrfToken: r.json.csrfToken, user: r.json.user };
@@ -94,11 +102,7 @@ try {
   prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, max: 1 }) });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const bootstrapEnv = { ...env, BOOTSTRAP_OWNER_EMAIL: ownerEmail, BOOTSTRAP_OWNER_HASH: passwordHash };
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['apps/api/dist/cloud-bootstrap.js'], { cwd: root, env: bootstrapEnv, stdio: ['ignore', 'pipe', 'pipe'] });
-    let message = ''; child.stderr.on('data', data => { message += data; });
-    child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(`Bootstrap de teste falhou: ${message}`)));
-  });
+  await runBootstrap(bootstrapEnv);
   const owner = await prisma.user.findUniqueOrThrow({ where: { email: ownerEmail } });
   assert.equal(owner.passwordHash, passwordHash);
   ok('bootstrap cloud cria o primeiro proprietário usando trava e hash Argon2id');
@@ -251,6 +255,18 @@ try {
   await request('/auth/recovery', { method: 'POST', body: { email: ownerEmail, recoveryCode: enabled.recoveryCodes[0], newPassword: password }, expected: 201 });
   await request('/auth/me', { auth: admin, expected: 401 });
   assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).recoveryHashes.length, 9); ok('recuperação consome código e revoga acessos');
+  const passwordOnly = await login(undefined, undefined, secondBase);
+  assert.equal(passwordOnly.user.id, owner.id);
+  await request('/auth/password', { method: 'POST', auth: passwordOnly, server: secondBase, body: { currentPassword: password, newPassword: 'astuto7k' }, expected: 201 });
+  await request('/auth/logout', { method: 'POST', auth: passwordOnly, server: secondBase, expected: 201 });
+  await runBootstrap(bootstrapEnv);
+  const simpleAccess = await login(undefined, undefined, secondBase, 'astuto7k');
+  assert.equal(simpleAccess.user.id, owner.id);
+  ok('login sem e-mail usa a senha salva e continua válido após novo bootstrap');
+  await request('/auth/password', { method: 'POST', auth: simpleAccess, server: secondBase, body: { currentPassword: 'astuto7k', newPassword: password }, expected: 201 });
+  await request('/auth/logout', { method: 'POST', auth: simpleAccess, server: secondBase, expected: 201 });
+  await request('/auth/login', { method: 'POST', server: secondBase, body: { password: 'astuto7k' }, expected: 401 });
+  ok('a senha anterior não permanece como chave alternativa após uma troca');
   const events = (await request('/audit', { auth: otherAdmin })).json;
   assert.ok(events.every(e => e.ownerId === other.id));
   await prisma.deviceCredential.updateMany({ where: { deviceId: otherDevice.device.id }, data: { expiresAt: new Date(0) } });

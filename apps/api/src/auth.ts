@@ -16,8 +16,14 @@ const userView=(u:{id:string;email:string;mfaEnabled:boolean})=>({id:u.id,email:
 export class AuthService {
  private dummyHash:Promise<string>=hashPassword(token());
  constructor(@Inject(Db) private readonly db:Db){}
+ private async findOwner(email?:string){
+  const selected=email??process.env.BOOTSTRAP_OWNER_EMAIL;
+  if(selected)return this.db.user.findUnique({where:{email:selected.trim().toLowerCase()}});
+  const users=await this.db.user.findMany({orderBy:{createdAt:'asc'},take:2});
+  return users.length===1?users[0]:null;
+ }
  async login(input:z.infer<typeof login>,userAgent:string){
-  const user=await this.db.user.findUnique({where:{email:input.email}});
+  const user=await this.findOwner(input.email);
   const valid=await argon2.verify(user?.passwordHash??await this.dummyHash,input.password).catch(()=>false);
   if(!user||!valid||(user.lockedUntil&&user.lockedUntil.getTime()>Date.now())){
    if(user){const count=user.failedLoginCount+1;await this.db.user.update({where:{id:user.id},data:{failedLoginCount:count,lockedUntil:count>=5?new Date(Date.now()+15*60_000):user.lockedUntil}});await this.audit(user.id,'AUTH_LOGIN_FAILED');}
@@ -48,10 +54,10 @@ export class AuthService {
    await tx.auditEvent.create({data:{ownerId,actorId:ownerId,type:'ADMIN_SESSION_REVOKED',details:{adminSessionId:id}}});return sessions.map(s=>s.id);
   });for(const sessionId of ids)events.emit('session-change',sessionId);
  }
- async recovery(email:string,recoveryCode:string,newPassword:string){
+ async recovery(email:string|undefined,recoveryCode:string,newPassword:string){
   const passwordHash=await hashPassword(newPassword);
+  const candidate=await this.findOwner(email);if(!candidate)throw authError();
   const result=await this.db.$transaction(async tx=>{
-   const candidate=await tx.user.findUnique({where:{email}});if(!candidate)throw authError();
    await tx.$queryRaw`SELECT id FROM users WHERE id=${candidate.id}::uuid FOR UPDATE`;
    const u=await tx.user.findUniqueOrThrow({where:{id:candidate.id}});const codeHash=digest(recoveryCode);
    if(!u.recoveryHashes.includes(codeHash))throw authError();
@@ -74,7 +80,7 @@ export class AuthController {
  }
  @Post('recovery') async recovery(@Body() body:unknown,@Req() req:Request){
   if(req.headers.origin&&!originAllowed(req.headers.origin))throw authError();
-  const input=parse(z.object({email:z.email().transform(v=>v.toLowerCase()),recoveryCode:z.string().min(10).max(128),newPassword:password}).strict(),body);
+  const input=parse(z.object({email:z.email().transform(v=>v.toLowerCase()).optional(),recoveryCode:z.string().min(10).max(128),newPassword:password}).strict(),body);
   return this.auth.recovery(input.email,input.recoveryCode,input.newPassword);
  }
  @UseGuards(AuthGuard) @Get('me') async me(@Req() req:AuthedRequest){const p=admin(req.principal);return {user:userView(await this.db.user.findUniqueOrThrow({where:{id:p.userId}})),csrfToken:p.csrfToken};}

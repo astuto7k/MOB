@@ -45,7 +45,7 @@ Para o primeiro usuário, escolha **uma** opção:
 1. Execute `npm run db:bootstrap` com as variáveis do banco e da API no ambiente local confiável; informe e-mail e senha no terminal.
 2. Configure `BOOTSTRAP_OWNER_EMAIL` e `BOOTSTRAP_OWNER_HASH` (hash Argon2id de uma senha aleatória, nunca a senha em texto) na Vercel antes do primeiro build. O inicializador usa transação e trava de banco, cria o proprietário somente se não houver nenhum usuário e nunca altera senha ou MFA de contas existentes.
 
-Não existe senha padrão. A senha inicial do ambiente configurado fica somente no arquivo privado de acesso entregue localmente; não a adicione ao GitHub. Após entrar, troque a senha e ative o MFA nas configurações do painel.
+O formulário de login exige apenas a senha configurada no banco. O proprietário é selecionado pelo e-mail interno de BOOTSTRAP_OWNER_EMAIL; sem essa variável, a API aceita o modo sem e-mail somente quando há um único proprietário no banco. Não há senha alternativa embutida no código. A senha de acesso consta no arquivo privado entregue localmente. Reinicializações e novos deploys não a redefinem. O MFA continua opcional.
 
 Configure previews com banco separado e `WEB_ORIGIN` exata de cada ambiente. A configuração Production não autoriza automaticamente origens de preview. Não use banco Production para executar testes de integração.
 

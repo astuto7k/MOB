@@ -1,3 +1,7 @@
+# Acesso ao painel
+
+O login pede apenas a senha do proprietário. E-mail não é necessário. A senha fica salva no banco e não é redefinida ao reiniciar ou publicar o projeto.
+
 # Testes na Vercel
 
 Para publicar e usar o APK com o endereço gratuito da Vercel, siga [docs/VERCEL.md](docs/VERCEL.md). A versão 0.5.1 exige banco PostgreSQL e pareamento por código; não há senha padrão nem cadastro automático de aparelhos.
@@ -37,7 +41,7 @@ npm run db:migrate
 npm run db:bootstrap
 ```
 
-O bootstrap pede e-mail e senha oculta (mínimo12 caracteres) e só funciona antes da criação do primeiro proprietário. Não há usuário/senha padrão. Segredos .env são gerados localmente, não exibidos nem incluídos no pacote de código. Se .env já existe, setup se recusa a sobrescrevê-lo. A API lê o .env da raiz, inclusive nos comandos de workspace.
+O bootstrap pede e-mail e senha oculta (mínimo 8 caracteres) e só funciona antes da criação do primeiro proprietário. Não há usuário/senha padrão. Segredos .env são gerados localmente, não exibidos nem incluídos no pacote de código. Se .env já existe, setup se recusa a sobrescrevê-lo. A API lê o .env da raiz, inclusive nos comandos de workspace.
 
 Abra dois terminais na raiz:
 
