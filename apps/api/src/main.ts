@@ -2,7 +2,7 @@ import { isEntrypoint } from './entry.js';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { createRequire } from 'node:module';
+import * as helmetExports from 'helmet';
 import type { RequestHandler } from 'express';
 import cookieParser from 'cookie-parser';
 import { json } from 'express';
@@ -10,8 +10,8 @@ import { AppModule } from './app.module.js';
 import { config } from './config.js';
 import { ErrorFilter,rateLimit } from './http.js';
 import { SignalingService } from './signaling.js';
-// Helmet's CJS entry avoids divergent default-import inference in Vercel's TS pass.
-const helmet: (options?: import('helmet').HelmetOptions) => RequestHandler = createRequire(import.meta.url)('helmet');
+// Keep a static import for Vercel dependency tracing and an explicit callable type.
+const helmet = helmetExports.default as unknown as (options?: import('helmet').HelmetOptions) => RequestHandler;
 export async function createApp(){
  const app=await NestFactory.create<NestExpressApplication>(AppModule,{bodyParser:false,logger:['error','warn','log']});
  if(config.TRUST_PROXY==='1')app.set('trust proxy',1);
