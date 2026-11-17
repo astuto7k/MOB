@@ -171,7 +171,7 @@ try {
   assert.ok(Number(turn.username.split(':')[0]) <= Math.floor(Date.now() / 1000) + 600); ok('credencial TURN temporária e vínculo ao acesso administrativo');
   // A cold Vercel instance must not reset passwords/MFA or end another instance's sessions.
   const secondPort = await freePort(), secondBase = `http://127.0.0.1:${secondPort}/api/v1`;
-  secondApi = spawn(process.execPath, ['apps/api/dist/main.js'], { cwd: root, env: { ...env, PORT: String(secondPort), VERCEL: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  secondApi = spawn(process.execPath, ['--input-type=module', '-e', "import {createServer} from 'node:http'; import handler from './apps/api/dist/main.js'; createServer((req,res)=>{void handler(req,res);}).listen(Number(process.env.PORT),'127.0.0.1');"], { cwd: root, env: { ...env, PORT: String(secondPort), VERCEL: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   secondApi.stdout.on('data', data => { log = (log + data).slice(-16000); });
   secondApi.stderr.on('data', data => { log = (log + data).slice(-16000); });
   for (let i = 0; i < 100; i++) {

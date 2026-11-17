@@ -55,6 +55,17 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install SDK
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: Verify published release APK
+        working-directory: .
+        run: |
+          cmp MOB.apk apps/web/public/apk/MOB.apk
+          sha256sum --check docs/APK-SHA256SUMS
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose MOB.apk
+          manifest=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging MOB.apk)
+          if [[ "$manifest" == *"application-debuggable"* ]]; then
+            echo "O APK publicado deve ser release, sem depuração."
+            exit 1
+          fi
       - run: ./gradlew --no-daemon assembleStandaloneDebug testStandaloneDebugUnitTest lintStandaloneDebug
       - name: Compile optional Firebase flavor
         run: ./gradlew --no-daemon assembleFirebaseDebug

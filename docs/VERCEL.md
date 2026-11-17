@@ -49,9 +49,9 @@ Não existe senha padrão. A senha inicial do ambiente configurado fica somente 
 
 Configure previews com banco separado e `WEB_ORIGIN` exata de cada ambiente. A configuração Production não autoriza automaticamente origens de preview. Não use banco Production para executar testes de integração.
 
-## Android 0.5
+## Android 0.5.1
 
-APK de teste para Android 11 ou superior, ARM64 e ARMv7. Não foi validado em aparelho físico nesta entrega. Se a instalação acusar conflito de assinatura com o APK anterior, desinstale a versão anterior e instale esta; será necessário parear novamente. O APK desta entrega é uma compilação debug para testes, não uma versão de distribuição em loja.
+APK de teste para Android 11 ou superior, ARM64 e ARMv7. Não foi validado em aparelho físico nesta entrega. Se a instalação acusar conflito de assinatura com o APK anterior, desinstale a versão anterior e instale esta; será necessário parear novamente. O APK desta entrega é uma compilação release assinada, com depuração desabilitada. Ele ainda não foi distribuído pela Play Store nem submetido a uma aprovação do Google.
 
 1. No celular, abra o endereço do painel e use **Baixar APK de teste**.
 2. Entre no painel e clique em conectar Android para gerar o código.
@@ -79,6 +79,23 @@ Consultas frequentes consomem cotas de Functions e banco. Para testes curtos, ac
 - Código recusado: gerar outro código; é de uso único, expira e não é substituído por pareamento automático.
 - Vídeo não conecta em 4G/5G: verificar ICE/TURN real; HTTP saudável não prova passagem de mídia.
 
-Verificações locais: typecheck, lint, testes web/API/contratos, builds web/API e 24 verificações de integração com banco descartável, incluindo negociação HTTPS entre duas instâncias. Android: build, testes unitários e lint. Esses testes não representam captura de tela, toque ou transferência executados num Android físico.
+Verificações locais: typecheck, lint, testes web/API/contratos, builds web/API e 25 verificações de integração com banco descartável, incluindo negociação HTTPS entre duas instâncias. Android: build, testes unitários e lint. Esses testes não representam captura de tela, toque ou transferência executados num Android físico.
 
 Referências oficiais: [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages), [NestJS na Vercel](https://vercel.com/docs/frameworks/backend/nestjs), [estado persistente e WebSockets](https://vercel.com/docs/functions/websockets), [Neon na Vercel](https://neon.tech/docs/guides/vercel-native-integration).
+
+
+## Google Play Protect e reprodução do APK
+
+Mantenha o Google Play Protect ativo. A versão publicada usa as APIs de captura consentida do Android, HTTPS e controle opcional com divulgação e autorização local. Não altera o Play Protect. A assinatura release verifica a origem e a integridade do APK, mas não representa uma aprovação automática do Google. A instalação e a classificação precisam ser verificadas no Android real com o Play Protect ativo.
+
+O APK 0.5.1 requer Android 11+ e ARM64/ARMv7. Se houver conflito com a assinatura de uma compilação anterior, desinstale a versão anterior e faça novo pareamento após instalar. As atualizações seguintes devem usar a mesma chave release.
+
+Para reproduzir o binário, configure o SDK Android e JDK 21, mantenha o arquivo privado de assinatura fora do Git e execute:
+
+```sh
+node infrastructure/scripts/build-android-release.mjs --signing-file /caminho/privado/signing.json
+```
+
+O JSON privado contém `ARH_KEYSTORE_PATH`, `ARH_KEYSTORE_PASSWORD`, `ARH_KEY_ALIAS` e `ARH_KEY_PASSWORD`. Faça backup da chave e do JSON; eles não pertencem ao repositório público. O script compila, testa, verifica assinatura e depuração, copia o mesmo APK para a raiz e para o download do painel e atualiza `docs/APK-SHA256SUMS`. O GitHub Actions verifica o APK publicado.
+
+Referências: [assinatura Android](https://developer.android.com/studio/publish/app-signing) e [Google Play Protect](https://developers.google.com/android/play-protect).
