@@ -1,12 +1,12 @@
 import { Global,Module } from '@nestjs/common';
-import { Db } from './db';
-import { Security,AuthGuard } from './security';
-import { AuthController,AuthService } from './auth';
-import { HubService } from './hub';
-import { SignalingService } from './signaling';
-import { HttpsSignalingController } from './https-signaling';
-import { NotificationsController,NotificationsService } from './notifications';
-import { AuditController,DeviceController,DevicesController,FilesController,HealthController,PairingController,SessionsController,SettingsController,UsersController } from './controllers';
+import { Db } from './db.js';
+import { Security,AuthGuard } from './security.js';
+import { AuthController,AuthService } from './auth.js';
+import { HubService } from './hub.js';
+import { SignalingService } from './signaling.js';
+import { HttpsSignalingController } from './https-signaling.js';
+import { NotificationsController,NotificationsService } from './notifications.js';
+import { AuditController,DeviceController,DevicesController,FilesController,HealthController,PairingController,SessionsController,SettingsController,UsersController } from './controllers.js';
 @Global()
 @Module({providers:[Db,Security,AuthGuard,HubService,AuthService],exports:[Db,Security,AuthGuard,HubService,AuthService]})
 export class CoreModule {}

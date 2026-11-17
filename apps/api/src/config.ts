@@ -1,6 +1,6 @@
 import { config as loadEnv } from 'dotenv';
-import { resolve } from 'node:path';
-loadEnv({path:resolve(__dirname,'../../../.env'),quiet:true});
+import { fileURLToPath } from 'node:url';
+loadEnv({path:fileURLToPath(new URL('../../../.env',import.meta.url)),quiet:true});
 import { z } from 'zod';
 const schema = z.object({
   NODE_ENV: z.enum(['development','production','test']).default('development'),

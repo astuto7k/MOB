@@ -16,7 +16,7 @@ const { PrismaClient } = requireApi('@prisma/client');
 const { PrismaPg } = requireApi('@prisma/adapter-pg');
 const { WebSocket } = requireApi('ws');
 const argon2 = requireApi('argon2');
-const { totp } = requireApi('./dist/crypto.js');
+const { totp } = await import(new URL('../../apps/api/dist/crypto.js', import.meta.url));
 const freePort = () => new Promise((resolve, reject) => {
   const s = createServer(); s.on('error', reject);
   s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });

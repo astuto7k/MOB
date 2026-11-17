@@ -1,8 +1,8 @@
 import { Inject,CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { Db } from './db';
-import { config,cookieName } from './config';
-import { csrfFor,digest,equal } from './crypto';
+import { Db } from './db.js';
+import { config,cookieName } from './config.js';
+import { csrfFor,digest,equal } from './crypto.js';
 export type Principal={kind:'admin';userId:string;adminSessionId:string;csrfToken:string}|{kind:'device';userId:string;deviceId:string;credentialId:string};
 export type AuthedRequest=Request&{principal:Principal};
 export function admin(p:Principal){if(p.kind!=='admin')throw new ForbiddenException({code:'ADMIN_REQUIRED',message:'Acesso administrativo necessário.'});return p;}

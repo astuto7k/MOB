@@ -2,12 +2,12 @@ import { Inject,Body,Controller,Injectable,OnModuleDestroy,OnModuleInit,Post,Req
 import { readFile } from 'node:fs/promises';
 import { createSign } from 'node:crypto';
 import { z } from 'zod';
-import { config } from './config';
-import { decrypt,encrypt } from './crypto';
-import { Db } from './db';
-import { AuthGuard,AuthedRequest,device } from './security';
-import { parse } from './validation';
-import { events } from './events';
+import { config } from './config.js';
+import { decrypt,encrypt } from './crypto.js';
+import { Db } from './db.js';
+import { AuthGuard,AuthedRequest,device } from './security.js';
+import { parse } from './validation.js';
+import { events } from './events.js';
 @Injectable()
 export class NotificationsService implements OnModuleInit,OnModuleDestroy {
  private access?:{token:string;expires:number};

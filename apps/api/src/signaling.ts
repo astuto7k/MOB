@@ -2,11 +2,11 @@ import { Inject,Injectable,OnModuleDestroy } from '@nestjs/common';
 import type { Server } from 'node:http';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket,WebSocketServer } from 'ws';
-import { Security,Principal,originAllowed } from './security';
-import { HubService,sessionView } from './hub';
-import { signaling } from './validation';
-import { events } from './events';
-import { isTerminal } from './state';
+import { Security,Principal,originAllowed } from './security.js';
+import { HubService,sessionView } from './hub.js';
+import { signaling } from './validation.js';
+import { events } from './events.js';
+import { isTerminal } from './state.js';
 type Client={socket:WebSocket;request:IncomingMessage;principal:Principal;sessionId?:string;count:number;window:number;alive:boolean};
 function cookies(header:string|undefined){const result:Record<string,string>={};for(const item of (header??'').split(';')){const split=item.indexOf('=');if(split<0)continue;const key=item.slice(0,split).trim();try{result[key]=decodeURIComponent(item.slice(split+1).trim());}catch{}}return result;}
 @Injectable()

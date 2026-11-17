@@ -1,9 +1,9 @@
 import { Inject,BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { Db } from './db';
-import { HubService,deviceView,sessionView } from './hub';
-import { admin,AuthGuard,AuthedRequest,device } from './security';
-import { heartbeat,pairingConfirm,parse,uuid } from './validation';
+import { Db } from './db.js';
+import { HubService,deviceView,sessionView } from './hub.js';
+import { admin,AuthGuard,AuthedRequest,device } from './security.js';
+import { heartbeat,pairingConfirm,parse,uuid } from './validation.js';
 @UseGuards(AuthGuard)
 @Controller('devices')
 export class DevicesController {

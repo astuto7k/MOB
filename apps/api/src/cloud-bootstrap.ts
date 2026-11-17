@@ -1,6 +1,7 @@
+import { isEntrypoint } from './entry.js';
 import 'reflect-metadata';
 import { z } from 'zod';
-import { Db } from './db';
+import { Db } from './db.js';
 
 /** Optional deploy-time first owner. Never resets an existing account or MFA. */
 export async function cloudBootstrap(db: Db, input = process.env) {
@@ -17,7 +18,7 @@ export async function cloudBootstrap(db: Db, input = process.env) {
     await tx.auditEvent.create({ data: { ownerId: user.id, actorId: user.id, type: 'OWNER_BOOTSTRAPPED' } });
   });
 }
-if (require.main === module) {
+if (isEntrypoint(import.meta.url)) {
   const db = new Db();
   void cloudBootstrap(db).finally(() => db.$disconnect()).catch((error: unknown) => {
     const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : 'UNKNOWN';

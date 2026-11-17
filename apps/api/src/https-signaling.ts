@@ -1,10 +1,10 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { Db } from './db';
-import { HubService, sessionView } from './hub';
-import { AuthGuard, AuthedRequest, Principal } from './security';
-import { parse, signaling, uuid } from './validation';
+import { Db } from './db.js';
+import { HubService, sessionView } from './hub.js';
+import { AuthGuard, AuthedRequest, Principal } from './security.js';
+import { parse, signaling, uuid } from './validation.js';
 
 @UseGuards(AuthGuard)
 @Controller('sessions/:id/signal')

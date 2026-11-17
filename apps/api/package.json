@@ -41,5 +41,9 @@
     "prisma": "7.10.1",
     "tsx": "4.20.6",
     "typescript": "6.0.3"
+  },
+  "type": "module",
+  "engines": {
+    "node": "24.x"
   }
 }

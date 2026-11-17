@@ -2,9 +2,9 @@ import 'reflect-metadata';
 import { createInterface } from 'node:readline/promises';
 import { stdin,stdout } from 'node:process';
 import { z } from 'zod';
-import { Db } from './db';
-import { hashPassword } from './auth';
-import { password } from './validation';
+import { Db } from './db.js';
+import { hashPassword } from './auth.js';
+import { password } from './validation.js';
 async function bootstrap(){
  const db=new Db();await db.$connect();try{
   if(await db.user.count())throw new Error('An owner already exists. Bootstrap is disabled.');
