@@ -112,7 +112,9 @@ try {
     if (i === 99) throw new Error('API não iniciou dentro do prazo');
     await delay(100);
   }
-  await request('/health'); ok('saúde consulta o banco real de testes');
+  const healthCheck = await request('/health');
+  assert.equal(healthCheck.response.headers.get('x-content-type-options'), 'nosniff');
+  ok('saúde consulta o banco real de testes e middleware de segurança está ativo');
   await new Promise((resolve, reject) => {
     const ws = new WebSocket(wsUrl); sockets.push(ws); ws.on('error', () => {});
     const timeout = setTimeout(() => { ws.terminate(); reject(new Error('Upgrade anônimo não foi recusado')); }, 5000);
